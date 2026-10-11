@@ -64,6 +64,13 @@ _BRIDGE_DIR = Path(__file__).parent
 _WEB_DIR    = _BRIDGE_DIR.parent / "web"
 
 MRC_MAX_MESSAGE_LEN = 140
+
+# Longest style suffix (pipe codes included) a user can set, matching
+# umrc-client's chatterNameSuffix (32 chars). Stored as plain JSON in
+# the profile, so no fixed-width field depends on it. The style prefix
+# stays at 16.
+MRC_STYLE_SUFFIX_MAX_LEN = 32
+
 # Minimum seconds between two chat packets from the same sender on
 # their way to the hub (see _send_chat_packet). The hub's flood control
 # discards a chat line that arrives too soon after the same sender's
@@ -1027,7 +1034,7 @@ class BridgeApp:
         self.exit_message_tpl = self.config.get("exit_message", "|07- |12{handle} |04has left chat.")
 
         self.default_style_prefix = _sanitize_no_tilde(self.config.get("default_style_prefix", ""), 16)
-        self.default_style_suffix = _sanitize_no_tilde(self.config.get("default_style_suffix", ""), 16)
+        self.default_style_suffix = _sanitize_no_tilde(self.config.get("default_style_suffix", ""), MRC_STYLE_SUFFIX_MAX_LEN)
         self.default_style_color  = _norm_pipe_color(self.config.get("default_style_color", "07"))
 
         self.ctcp_room = MRCProtocol.norm_room(_ctcp_room_from_config(self.config))
@@ -2158,7 +2165,7 @@ class BridgeApp:
         prof = self.db.get_profile(handle) or {}
 
         style_prefix       = _sanitize_no_tilde(prof.get("style_prefix",       self.default_style_prefix), 16)
-        style_suffix       = _sanitize_no_tilde(prof.get("style_suffix",       self.default_style_suffix), 16)
+        style_suffix       = _sanitize_no_tilde(prof.get("style_suffix",       self.default_style_suffix), MRC_STYLE_SUFFIX_MAX_LEN)
         style_color        = _norm_pipe_color(prof.get("style_color",           self.default_style_color))
         style_prefix_color = _norm_pipe_color(prof.get("style_prefix_color",   style_color))
         style_handle_color = _norm_pipe_color(prof.get("style_handle_color",   style_color))
@@ -2300,7 +2307,7 @@ class BridgeApp:
             return
 
         prefix       = _sanitize_no_tilde(data.get("prefix", ""), 16)
-        suffix       = _sanitize_no_tilde(data.get("suffix", ""), 16)
+        suffix       = _sanitize_no_tilde(data.get("suffix", ""), MRC_STYLE_SUFFIX_MAX_LEN)
         base_color   = _norm_pipe_color(data.get("color",        sess.get("style_color",  "07")))
         prefix_color = _norm_pipe_color(data.get("prefix_color", data.get("style_prefix_color", base_color)))
         handle_color = _norm_pipe_color(data.get("handle_color", data.get("style_handle_color", base_color)))

@@ -3041,7 +3041,7 @@ class MRCChat(BaseChatSystem):
                     '',
                     '\x1b[1m/set <field> <value>\x1b[0m   (also: /set list)',
                     '  prefix <text>       nick prefix decoration (max 16 chars)',
-                    '  suffix <text>       nick suffix decoration (max 16 chars)',
+                    '  suffix <text>       nick suffix decoration (max 32 chars)',
                     '  color <00-15>       nick color (pipe code)',
                     '  entermsg <text>     shown on chat entry; {handle} placeholder',
                     '  leavemsg <text>     shown on chat leave; {handle} placeholder',
@@ -3084,7 +3084,11 @@ class MRCChat(BaseChatSystem):
                 if not value:
                     await self._emit(f'Usage: /set {field} <text>')
                     return True
-                await self._send_json(self._style_payload(**{field: value[:16]}))
+                # Suffix matches umrc-client's 32-char chatterNameSuffix;
+                # prefix stays at 16 (see the bridge's
+                # MRC_STYLE_SUFFIX_MAX_LEN).
+                max_len = 32 if field == 'suffix' else 16
+                await self._send_json(self._style_payload(**{field: value[:max_len]}))
                 return True
 
             if field == 'color':
