@@ -20,13 +20,14 @@ import asyncio
 import re
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mrc.bridge.main import BridgeApp, MRCProtocol  # noqa: E402
+from mrc.bridge.main import BridgeApp, MRCProtocol, MRC_CHAT_PACKET_SPACING  # noqa: E402
 
 
 def _run(coro):
@@ -139,6 +140,59 @@ class WebSocketLongMessageSplitTests(unittest.TestCase):
             self.assertLessEqual(len(m["message"]), 140)
             self.assertTrue(m["message"].startswith("|15* |13"))
             self.assertTrue(m["message"].endswith("|07"))
+
+
+class WebSocketChatPacingTests(unittest.TestCase):
+    """ANetBBS's own web and terminal MRC clients go through these
+    WebSocket handlers. The hub's flood control discards a chat line
+    that arrives too soon after the same sender's previous one, so the
+    chunks of a line the bridge splits itself -- and back-to-back
+    /broadcast commands -- must leave at least MRC_CHAT_PACKET_SPACING
+    apart, same as the native-TCP path (see
+    test_mrc_bridge_tcp_listener.py's MrcTcpChatPacingTests)."""
+
+    SLACK = 0.02  # timer granularity
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.app = _make_bridge(self._tmp.name)
+        self.ws_id = 222
+        self.ws = _FakeWs()
+        self.app.websockets[self.ws_id] = self.ws
+        _run(self.app._handle_join_room(self.ws_id, {"handle": "Alice", "room": "lobby"}))
+        self.app.mrc.send_packet.reset_mock()
+        self.times = []
+
+        async def _record(_pkt):
+            self.times.append(time.monotonic())
+        self.app.mrc.send_packet.side_effect = _record
+
+    def _assert_spaced(self, min_packets=2):
+        self.assertGreaterEqual(len(self.times), min_packets)
+        for a, b in zip(self.times, self.times[1:]):
+            self.assertGreaterEqual(b - a, MRC_CHAT_PACKET_SPACING - self.SLACK)
+
+    def test_split_room_message_chunks_are_spaced(self):
+        long_text = ' '.join(f"word{i}" for i in range(1, 60))
+        _run(self.app._handle_send_message(self.ws_id, {"message": long_text}))
+        self._assert_spaced()
+
+    def test_split_direct_message_chunks_are_spaced(self):
+        long_text = ' '.join(f"word{i}" for i in range(1, 60))
+        _run(self.app._handle_direct_message(
+            self.ws_id, {"to_user": "Bob", "message": long_text}))
+        self._assert_spaced()
+
+    def test_back_to_back_broadcast_commands_are_spaced(self):
+        async def _two():
+            await self.app._handle_server_cmd(self.ws_id, {"command": "BROADCAST part one"})
+            await self.app._handle_server_cmd(self.ws_id, {"command": "BROADCAST part two"})
+        _run(_two())
+        sent = _sent_messages(self.app.mrc)
+        self.assertEqual([m["message"] for m in sent],
+                         ["BROADCAST part one", "BROADCAST part two"])
+        self._assert_spaced()
 
 
 if __name__ == '__main__':
