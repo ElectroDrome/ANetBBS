@@ -208,22 +208,22 @@ class ActionAndBroadcastOverheadTests(unittest.TestCase):
 
 
 class StatusBarActionCounterTests(unittest.TestCase):
-    def test_me_remaining_counter_counts_typed_text_only(self):
-        # The counter shows 140 minus the typed action text, the same raw
-        # count umrc-client shows; the bridge's action wrapper is not
-        # charged against it.
+    def test_me_counter_counts_typed_text_only(self):
+        # The counter measures the typed action text against 140 (the
+        # bridge's action wrapper isn't charged against it). Past 140,
+        # it counts down what's left of the 280-char line and shows the
+        # 280 in red -- see _buffer_countdown.
         chat = _make_chat()
         chat._split_screen = True
         chat._term_columns = 100
         chat._action_overhead = 50
-        chat._input_buf = list('/me ' + ('x' * 145))  # 145 > 140 -> 5 over
+        chat._input_buf = list('/me ' + ('x' * 145))  # 149 typed in all
 
         _run(chat._draw_status_line())
 
         written = ''.join(chat.session.written)
-        self.assertIn('\x1b[1;91m-5\x1b[0m', written,
-                      f'expected the typed-text remaining count in the '
-                      f'status line, got: {written!r}')
+        self.assertIn('131\x1b[0m/\x1b[1;91m280\x1b[0m', written,
+                      f'expected 131/280 with a red 280, got: {written!r}')
 
 
 class UsernickParsingTests(unittest.TestCase):

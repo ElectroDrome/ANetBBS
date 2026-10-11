@@ -48,7 +48,7 @@ from ..core.protocols import SessionProtocol
 # mrc/ is a sibling top-level package to anetbbs/ (both under the repo
 # root), not a submodule of it -- see mrc/mystic_client/theme_layout.py's
 # own module docstring for the .ini/.ans coordinate format this parses.
-from mrc.mystic_client.theme_layout import load_theme_layout, extract_art_segment, best_fit_mode
+from mrc.mystic_client.theme_layout import load_theme_layout, extract_art_segment, best_fit_mode, art_char_at
 
 
 MAX_OUTGOING_CHARS = 140        # MRC hub hard limit
@@ -1052,7 +1052,7 @@ class MRCChat(BaseChatSystem):
         # Real per-room user count -- data ANetBBS already tracks
         # (self._known_users), unlike the hub-wide stats above.
         _place('CHATTERS', str(len(self._known_users)))
-        _place('BUFFER', str(self._input_remaining_chars()))
+        self._mystic_place_buffer(layout, out)
         # Capped at 99 (not just left to _place()'s own length-based
         # truncation) -- the bundled themes' MENTIONS field is 2 chars
         # wide, and truncating "100" to "10" would silently understate
@@ -1144,16 +1144,14 @@ class MRCChat(BaseChatSystem):
         # different cap since the bridge prepends a different wrapper
         # before its hard 140-char cutoff -- see _chat_wire_cap/
         # _dm_wire_cap/_action_wire_cap).
+        # Shown as remaining/limit -- see _buffer_countdown.
         typed = len(self._input_buf)
         if typed > 0:
-            remaining = self._input_remaining_chars()
-            if remaining < 0:
-                cc = f'\x1b[1;91m{remaining}\x1b[0m'   # red: over limit
-            elif remaining <= 15:
-                cc = f'\x1b[1;93m{remaining}\x1b[0m'   # yellow: close
-            else:
-                cc = f'\x1b[1;36m{remaining}\x1b[0m'     # cyan: fine
-            right_bits.append(cc)
+            first, second, level, second_red = self._buffer_countdown()
+            first_sgr = {'red': '1;91', 'yellow': '1;93'}.get(level, '1;36')
+            second_sgr = '1;91' if second_red else '1;36'
+            right_bits.append(f'\x1b[{first_sgr}m{first:03d}\x1b[0m/'
+                              f'\x1b[{second_sgr}m{second:03d}\x1b[0m')
         # Replaces the status bar's old clock widget (Jerry: per-message
         # timestamps already show the time on every line, so a second
         # clock at the top was redundant -- latency is the thing that
@@ -2606,6 +2604,67 @@ class MRCChat(BaseChatSystem):
                 return
         self._input_buf = list(self._input_history[self._history_pos])
         await self._draw_input_line()
+
+    def _buffer_countdown(self) -> tuple:
+        """Input countdown for the status displays ("chatty mod"):
+        (first, second, level, second_red).
+
+        Up to 140 typed: first counts down what's left of the 140-char
+        typed-text budget and second is 140. Past 140 (the line will go
+        out in pieces): first counts down what's left of the 280-char
+        line limit and second is 280, shown in red. level colors the
+        first number: 'yellow' at 20 or fewer left, 'red' at 5 or
+        fewer, else 'normal' -- the same thresholds umrc-client uses
+        for its counter (umrc-client/main.c, updateBuffer()), which
+        counts up instead."""
+        remaining = self._input_remaining_chars()
+        if remaining >= 0:
+            first, second, second_red = remaining, MAX_OUTGOING_CHARS, False
+        else:
+            first = max(0, MAX_CHAT_LINE_LEN - len(self._input_buf))
+            second, second_red = MAX_CHAT_LINE_LEN, True
+        if first <= 5:
+            level = 'red'
+        elif first <= 20:
+            level = 'yellow'
+        else:
+            level = 'normal'
+        return first, second, level, second_red
+
+    def _mystic_place_buffer(self, layout, out: list) -> None:
+        """Write the BUFFER countdown at the Mystic theme's element.
+        Every bundled theme's art has "/" and three more cells right
+        after the element ("000/000"), so the limit goes there too
+        (see _buffer_countdown). A theme without that "/" gets one
+        number: what's left of the 280-char line limit."""
+        el = layout.element('BUFFER')
+        if not el:
+            return
+        x, y, length = el[0], el[1], el[2]
+        if length <= 0:
+            return
+        normal = self._mystic_color_sgr(el[3])
+        has_limit = self._mystic_buffer_has_limit_slot(layout, x + length, y)
+        if has_limit:
+            first, second, level, second_red = self._buffer_countdown()
+        else:
+            first = max(0, MAX_CHAT_LINE_LEN - len(self._input_buf))
+            level = 'red' if first <= 5 else ('yellow' if first <= 20 else 'normal')
+        first_sgr = {'red': '1;91', 'yellow': '1;93'}.get(level, normal)
+        text = f'{first:0{length}d}'[-length:]
+        out.append(f'\x1b[{y};{x}H\x1b[{first_sgr}m{text}\x1b[0m')
+        if has_limit:
+            second_sgr = '1;91' if second_red else normal
+            out.append(f'\x1b[{y};{x + length + 1}H\x1b[{second_sgr}m{second:03d}\x1b[0m')
+
+    def _mystic_buffer_has_limit_slot(self, layout, x: int, y: int) -> bool:
+        """True if the theme's art has "/" at (x, y). Cached per layout,
+        since the status line redraws on every keystroke."""
+        cache = getattr(self, '_buffer_slot_cache', None)
+        if cache is None or cache[0] is not layout:
+            cache = (layout, art_char_at(layout, x, y) == '/')
+            self._buffer_slot_cache = cache
+        return cache[1]
 
     def _current_color_ansi(self) -> str:
         return f'\x1b[{_PIPE_COLORS.get(_COLOR_SEQ[self._color_idx], "37")}m'
