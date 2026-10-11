@@ -2324,9 +2324,13 @@ class MRCChat(BaseChatSystem):
                 if self._scroll_offset:
                     self._scroll_offset = 0
                     await self._redraw_chat_area()
+                # The typing color is carried on top of the typed-text
+                # budget (see _chat_wire_cap), so add its length to the
+                # cap -- _split_for_wire counts repeat_prefix inside it.
+                color = self._current_color_pipe()
                 for i, chunk in enumerate(_split_for_wire(
-                        line, cap=self._chat_wire_cap(),
-                        repeat_prefix=self._current_color_pipe())):
+                        line, cap=self._chat_wire_cap() + len(color),
+                        repeat_prefix=color)):
                     if i:
                         await asyncio.sleep(WIRE_CHUNK_DELAY)
                     await self._send_json({
@@ -2603,18 +2607,22 @@ class MRCChat(BaseChatSystem):
         return f'|{_COLOR_SEQ[self._color_idx]}'
 
     def _chat_wire_cap(self) -> int:
-        """Max chars per outgoing room-chat chunk, leaving room for the
-        display handle the bridge prepends before its hard 140-char cutoff."""
-        return max(10, MAX_OUTGOING_CHARS - self._handle_overhead)
+        """Max typed chars per outgoing room-chat chunk. The display
+        handle the bridge prepends (and this client's own typing color)
+        travel on top of the 140-char typed-text budget, the same way
+        umrc-client counts its lines -- see mrc/bridge/main.py's
+        _handle_send_message."""
+        return MAX_OUTGOING_CHARS
 
     def _dm_wire_cap(self) -> int:
-        """Same as _chat_wire_cap() but for /t DMs (different wrapper prefix)."""
-        return max(10, MAX_OUTGOING_CHARS - self._dm_overhead)
+        """Same as _chat_wire_cap() but for /t DMs (the bridge's
+        DirectMsg wrapper also travels on top of the budget)."""
+        return MAX_OUTGOING_CHARS
 
     def _action_wire_cap(self) -> int:
-        """Same as _chat_wire_cap() but for /me actions (different, fixed-
-        color wrapper prefix -- see _session_action_overhead in the bridge)."""
-        return max(10, MAX_OUTGOING_CHARS - self._action_overhead)
+        """Same as _chat_wire_cap() but for /me actions (the bridge's
+        fixed-color action wrapper also travels on top of the budget)."""
+        return MAX_OUTGOING_CHARS
 
     def _input_remaining_chars(self) -> int:
         """Chars still available in the current input line's wire budget
@@ -2929,12 +2937,10 @@ class MRCChat(BaseChatSystem):
             if not rest:
                 await self._emit('Usage: /me <action>')
                 return True
-            # cap=self._action_wire_cap(), not the bare 140 -- the bridge
-            # replaces this "* " marker with its own fixed-color wrapper
-            # ("|15* |13{nick} ...|07") before this ever hits the wire,
-            # which costs more than 2 chars. Uncapped, any action within
-            # ~12+len(nick) chars of the limit had its tail silently
-            # dropped server-side with no warning.
+            # The bridge replaces this "* " marker with its own
+            # fixed-color wrapper ("|15* |13{nick} ...|07"), which it
+            # carries on top of the 140-char typed-text budget -- see
+            # _action_wire_cap.
             for i, chunk in enumerate(_split_for_wire(rest, cap=self._action_wire_cap())):
                 if i:
                     await asyncio.sleep(WIRE_CHUNK_DELAY)

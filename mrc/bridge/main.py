@@ -372,7 +372,14 @@ def _umrc_display_prefix(message: str, nick: str) -> str:
     sender's nick. Pipe color codes immediately after that space belong
     to the prefix too, so a continuation chunk keeps the sender's text
     color. /me, DirectMsg, and Broadcast lines use the fixed templates
-    in _UMRC_FIXED_PREFIXES."""
+    in _UMRC_FIXED_PREFIXES.
+
+    This is a heuristic: ordinary text from a non-uMRC client on the
+    raw TCP listener whose first word happens to contain the sender's
+    nick would also be read as a prefix, giving that line up to 79
+    extra chars before it splits. Impact is low -- the listener exists
+    for umrc-client connections, and the hub accepts lines well past
+    the nominal 140 (uMRC's own lines run up to 79 + 140)."""
     msg = message or ''
     if not nick:
         return ''
@@ -388,6 +395,18 @@ def _umrc_display_prefix(message: str, nick: str) -> str:
         return ''
     head = _PIPE_COLOR_RE.sub('', prefix.split(' ', 1)[0])
     return prefix if nick.lower() in head.lower() else ''
+
+
+_LEADING_PIPE_COLOR_RE = re.compile(r'^\|[0-9]{2}')
+
+
+def _leading_pipe_color(text: str) -> str:
+    """Return the one pipe color code at the very start of `text`
+    (e.g. "|14" from "|14hello"), or '' if it doesn't start with one.
+    Only one: ANetBBS's clients prepend a single typing color, so any
+    further code right after it was typed by the user and counts."""
+    m = _LEADING_PIPE_COLOR_RE.match(text or '')
+    return m.group(0) if m else ''
 
 
 _MIN_BACKGROUND_LOOP_INTERVAL = 5.0
@@ -2451,19 +2470,32 @@ class BridgeApp:
         if not message:
             return
 
+        # MRC_MAX_MESSAGE_LEN is the typed-text budget; everything the
+        # bridge composes in front of the text (styled name, /me
+        # wrapper) and the client's typing color is carried on top of
+        # it, the same way umrc-client counts its own lines (see
+        # _umrc_display_prefix). Typed text, including any color codes
+        # typed inside it, counts in full.
         if self._is_action_body(message):
             body = message.lstrip()
             if body.startswith("* "):
                 action_text = body[2:].strip()
+                action_prefix = f"|15* |13{nick} "
                 suffix = "|07"
-                cap = max(1, MRC_MAX_MESSAGE_LEN - len(suffix))
                 chunks = [c + suffix for c in _split_long_message(
-                    action_text, cap=cap, repeat_prefix=f"|15* |13{nick} ")]
+                    action_text, cap=MRC_MAX_MESSAGE_LEN + len(action_prefix),
+                    repeat_prefix=action_prefix)]
             else:
                 chunks = [_truncate_wire_message(body)]
         else:
+            # Both ANetBBS clients start every chunk with the sender's
+            # typing color (e.g. "|14"); it belongs to the prefix, like
+            # the " |NN" text color at the end of umrc-client's prefix.
+            color = _leading_pipe_color(message)
+            prefix = f"{self._session_display_handle(sess)} {color}"
             chunks = _split_long_message(
-                message, repeat_prefix=f"{self._session_display_handle(sess)} ")
+                message[len(color):], cap=MRC_MAX_MESSAGE_LEN + len(prefix),
+                repeat_prefix=prefix) or [prefix]
 
         for chunk in chunks:
             pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, "", room, chunk)
@@ -2488,8 +2520,11 @@ class BridgeApp:
             await self._safe_send(ws, {"type": "error", "message": "Usage: /t <user> <message>"})
             return
 
+        # Typed-text budget with the DirectMsg wrapper carried on top --
+        # see _handle_send_message.
         prefix = _dm_wrapper_prefix(self._session_display_handle(sess))
-        for chunk in _split_long_message(message, repeat_prefix=prefix):
+        for chunk in _split_long_message(message, cap=MRC_MAX_MESSAGE_LEN + len(prefix),
+                                         repeat_prefix=prefix):
             pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, to_user, "", chunk)
             await self._send_chat_packet(nick, pkt)
 

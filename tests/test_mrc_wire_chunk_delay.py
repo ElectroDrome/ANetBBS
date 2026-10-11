@@ -60,11 +60,9 @@ def _run(coro):
 class WireChunkDelayTests(unittest.TestCase):
     def test_multichunk_dm_sleeps_between_chunks_not_before_first(self):
         chat = _make_chat()
-        # A long overhead (simulating a decorated display handle) forces
-        # a split well under the raw 140-char hub limit -- exactly the
-        # reported scenario, not an artificially huge message.
-        chat._dm_overhead = 100
-        body = 'x' * 80  # cap = max(10, 140-100) = 40 -> must split
+        # 300 typed chars -- past the 140-char typed-text budget (the
+        # DirectMsg wrapper travels on top of it), so the DM must split.
+        body = 'word ' * 60
 
         with patch('anetbbs.features.mrc_chat.asyncio.sleep', new=AsyncMock()) as mock_sleep:
             _run(chat._send_dm('NightOwl', body))

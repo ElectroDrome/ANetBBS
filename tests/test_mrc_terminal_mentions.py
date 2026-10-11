@@ -238,20 +238,25 @@ class ReplyToLastDmTests(unittest.TestCase):
 
 
 class MessageLengthTests(unittest.TestCase):
-    def test_chat_wire_cap_accounts_for_handle_overhead(self):
+    # The display handle / DM wrapper the bridge prepends travels on top
+    # of the 140-char typed-text budget (mrc/bridge/main.py's
+    # _handle_send_message / _handle_direct_message), the same way
+    # umrc-client counts its own lines, so the caps no longer shrink
+    # with the overhead the bridge reports.
+    def test_chat_wire_cap_is_full_typed_budget_regardless_of_overhead(self):
         chat = _make_chat('StingRay')
         chat._handle_overhead = 20
-        self.assertEqual(chat._chat_wire_cap(), MAX_OUTGOING_CHARS - 20)
+        self.assertEqual(chat._chat_wire_cap(), MAX_OUTGOING_CHARS)
 
-    def test_dm_wire_cap_accounts_for_dm_overhead(self):
+    def test_dm_wire_cap_is_full_typed_budget_regardless_of_overhead(self):
         chat = _make_chat('StingRay')
         chat._dm_overhead = 30
-        self.assertEqual(chat._dm_wire_cap(), MAX_OUTGOING_CHARS - 30)
+        self.assertEqual(chat._dm_wire_cap(), MAX_OUTGOING_CHARS)
 
-    def test_wire_cap_has_a_floor_even_with_huge_overhead(self):
+    def test_wire_cap_unaffected_by_huge_overhead(self):
         chat = _make_chat('StingRay')
         chat._handle_overhead = 135
-        self.assertEqual(chat._chat_wire_cap(), 10)
+        self.assertEqual(chat._chat_wire_cap(), MAX_OUTGOING_CHARS)
 
     def test_joined_event_sets_overhead_from_bridge(self):
         chat = _make_chat('StingRay')
@@ -263,29 +268,29 @@ class MessageLengthTests(unittest.TestCase):
         self.assertEqual(chat._handle_overhead, 22)
         self.assertEqual(chat._dm_overhead, 35)
 
-    def test_140_char_message_with_realistic_overhead_no_longer_silently_truncated(self):
-        # Before the fix: _split_for_wire(colored) used a flat cap of 140,
-        # so a 140-char typed message went out as ONE chunk; the bridge
-        # then prepended a ~20-char display handle and hard-truncated the
-        # total at 140, silently dropping the message's tail.
-        # After the fix: the chunk cap itself accounts for that overhead,
-        # so the same input correctly becomes two "(1/2)"/"(2/2)" chunks
-        # instead of one that gets clipped server-side.
+    def test_140_typed_chars_go_out_as_one_chunk_with_color_on_top(self):
+        # 140 typed chars fill the typed-text budget exactly, so they go
+        # out as one chunk; the typing color rides on top of the budget
+        # (the send path adds its length to the cap), and the bridge
+        # carries the display handle on top as well.
         chat = _make_chat('StingRay')
         chat._handle_overhead = 20
         message = 'x' * 140
-        colored = chat._current_color_pipe() + message
-        chunks = _split_for_wire(colored, cap=chat._chat_wire_cap())
-        self.assertGreater(len(chunks), 1,
-            'a 140-char message with 20 chars of handle overhead must be '
-            'split into multiple wire chunks, not sent as one that the '
-            'bridge would truncate')
+        color = chat._current_color_pipe()
+        chunks = _split_for_wire(message, cap=chat._chat_wire_cap() + len(color),
+                                 repeat_prefix=color)
+        self.assertEqual(chunks, [color + message])
+
+    def test_141_typed_chars_split_with_color_on_every_chunk(self):
+        chat = _make_chat('StingRay')
+        message = ' '.join(['word'] * 30)[:141]
+        color = chat._current_color_pipe()
+        chunks = _split_for_wire(message, cap=chat._chat_wire_cap() + len(color),
+                                 repeat_prefix=color)
+        self.assertGreater(len(chunks), 1)
         for c in chunks:
-            self.assertLessEqual(len(c), chat._chat_wire_cap())
-        # Prepending the (fake) 20-char handle overhead to any single chunk
-        # must never exceed the bridge's hard 140-char wire limit.
-        for c in chunks:
-            self.assertLessEqual(len(c) + chat._handle_overhead, MAX_OUTGOING_CHARS)
+            self.assertTrue(c.startswith(color))
+            self.assertLessEqual(len(c) - len(color), MAX_OUTGOING_CHARS)
 
     def test_short_message_still_sends_as_a_single_chunk(self):
         chat = _make_chat('StingRay')
