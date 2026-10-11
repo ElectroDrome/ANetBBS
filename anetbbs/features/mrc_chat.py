@@ -70,6 +70,11 @@ MAX_OUTGOING_CHARS = 140        # MRC hub hard limit
 # raising, so the loop keeps making forward progress exactly like
 # read_line() does.
 MAX_CHAT_INPUT_LEN = 2048
+# Longest input line a user can type or paste, matching umrc-client's
+# 280-char input limit. Smaller than MAX_CHAT_INPUT_LEN above, so it
+# also bounds the raw buffer; input past it is ignored and not echoed.
+# A full line still splits into at most three wire chunks.
+MAX_CHAT_LINE_LEN = 280
 # Literal prefix the bridge's _normalize_server_cmd/_handle_server_cmd
 # path sends verbatim as Field7 for a broadcast ("BROADCAST {text}") --
 # fixed, not session-dependent, unlike handle/dm/action overhead which
@@ -2422,7 +2427,7 @@ class MRCChat(BaseChatSystem):
                     c = '?'
 
                 async with self._input_lock:
-                    if len(self._input_buf) < MAX_CHAT_INPUT_LEN:
+                    if len(self._input_buf) < MAX_CHAT_LINE_LEN:
                         self._input_buf.append(c)
                     await self._draw_input_line()
                     await self._draw_status_line()
@@ -2532,6 +2537,7 @@ class MRCChat(BaseChatSystem):
             del self._input_buf[start:]
             for c in full + suffix:
                 self._input_buf.append(c)
+            del self._input_buf[MAX_CHAT_LINE_LEN:]
             await self._draw_input_line()
             return
         if len(common) > len(prefix):
@@ -2539,6 +2545,7 @@ class MRCChat(BaseChatSystem):
             del self._input_buf[start:]
             for c in common:
                 self._input_buf.append(c)
+            del self._input_buf[MAX_CHAT_LINE_LEN:]
             await self._draw_input_line()
             return
         # Multiple candidates, none of which share more in common than

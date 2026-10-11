@@ -587,7 +587,7 @@
         </div>
         <div id="chat-panel" style="display:none;">
           <div class="input-group">
-            <input type="text" id="message-input"
+            <input type="text" id="message-input" maxlength="280"
               placeholder="Type a message, /command, or !helper..."
               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" 
               inputmode="text" />
@@ -972,6 +972,12 @@
     // Wire-limit overhead (received from server on 'joined' / 'style_updated')
     // -----------------------------------------------------------------------
     const MRC_MAX_LEN = 140;
+    // Longest line a user can send, matching umrc-client's 280-char
+    // input limit and the terminal client's MAX_CHAT_LINE_LEN. The
+    // message box's maxlength="280" stops typing and trims pastes at
+    // this length; doSend() checks it too, for text placed in the box
+    // another way (macros, tab-complete, history).
+    const MRC_MAX_LINE_LEN = 280;
     let _handleOverheadChars = 0;
     let _dmOverheadChars     = 0;
 
@@ -1600,6 +1606,13 @@
     function doSend() {
       let rawLine = messageInput.value || '';
       if (secureMode) rawLine = '/' + secureMode.verb + ((secureMode.separatorEntered || secureMode.realRest) ? ' ' : '') + (secureMode.realRest || '');
+
+      if (rawLine.length > MRC_MAX_LINE_LEN) {
+        // Left in the box so the user can shorten it.
+        addMessage('✗ Line is ' + rawLine.length + ' characters; the limit is ' +
+                   MRC_MAX_LINE_LEN + '. Shorten it and send again.', 'error');
+        return;
+      }
 
       const parsed = parseUserInput(rawLine);
       if (!parsed) return;
