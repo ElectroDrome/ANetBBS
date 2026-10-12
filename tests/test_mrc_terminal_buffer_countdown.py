@@ -5,7 +5,6 @@ up to 140 typed, what's left of the 140-char typed-text budget over
 first number turns yellow at 20 or fewer left and red at 5 or fewer
 (umrc-client's thresholds; it counts up instead).
 """
-import asyncio
 import sys
 import unittest
 from pathlib import Path
