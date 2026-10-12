@@ -1,11 +1,32 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.37`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.38`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.38 — Web dashboard MRC Stats widget, plus a small internal MRC-theme follow-up (October 2026)
+
+The home page's sidebar can now show a live "MRC Stats" card (BBSes,
+Rooms, Users, Activity) reflecting the whole multi-relay-chat network,
+not just this BBS's own sessions — reads directly from the public hub
+status endpoint, so it works independently of whether the local MRC
+bridge is enabled. Cached server-side and refreshed in the browser
+once a minute; falls back to the last known reading rather than
+erroring out if the remote is briefly unreachable. Off by default
+behavior is unaffected — set `MRC_NETWORK_STATS_ENABLED=false` to hide
+the card entirely.
+
+Also rolls in a same-day outside-contributed follow-up
+(github.com/anetonline/ANetBBS/pull/24) to the prior release's MRC
+budget-parity work: a small internal cleanup (an unused import removed
+from a test file) and a correctness fix in the Mystic theme-layout
+art-reading helper, which now checks every art segment covering a
+screen row instead of stopping at the first match. No bundled theme
+currently overlaps segments, so this had no visible effect on any
+shipped theme — it closes the gap for a future theme that might.
 
 ## v1.1.37 — MRC: uMRC prefix budget, per-sender chat pacing, /b broadcast fix, and the same budget parity for ANetBBS's own clients (October 2026)
 

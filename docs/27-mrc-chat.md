@@ -242,6 +242,30 @@ also treats the file as "bridge ONLINE" purely based on its own
 modification time being under 60 seconds old, which is why this needs
 to keep getting rewritten periodically rather than written once.
 
+### Web dashboard "MRC Stats" widget
+
+The home page's sidebar (below Who's Online) can show the same four
+network-wide numbers the `mrcstats.dat` file above does -- BBSes,
+Rooms, Users, Activity -- but reads them directly from the public hub
+status endpoint instead of this BBS's own bridge connection, so it
+works even with the local bridge or terminal MRC disabled. Controlled
+by (all optional, `.env`):
+
+```
+MRC_NETWORK_STATS_ENABLED=true
+MRC_NETWORK_STATS_URL=https://status-na-multi.relaychat.net/stats.json
+MRC_NETWORK_STATS_CACHE_SECONDS=30
+```
+
+The server fetches and caches the endpoint in memory for
+`MRC_NETWORK_STATS_CACHE_SECONDS` (one shared cache regardless of how
+many browsers are polling the dashboard at once); the browser itself
+re-polls `/api/mrc-network-stats` once a minute. If the remote is
+unreachable, the widget keeps showing the last good reading (and says
+"Last known" instead of "Updated") rather than erroring out -- this is
+cosmetic dashboard decoration, never load-bearing for chat itself. Set
+`MRC_NETWORK_STATS_ENABLED=false` to hide the card entirely.
+
 ### Debug logging (wire-level troubleshooting)
 
 If chat isn't connecting or the stats file stays empty and the steps

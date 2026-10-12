@@ -195,6 +195,33 @@
         </div>
         {% endif %}
 
+        {% if config.MRC_NETWORK_STATS_ENABLED %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-broadcast"></i> MRC Stats
+            </div>
+            <div class="card-body" id="mrc-network-stats">
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted">BBSes</span>
+                    <span class="fw-bold text-success" id="mrc-stat-bbses">&mdash;</span>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted">Rooms</span>
+                    <span class="fw-bold text-success" id="mrc-stat-rooms">&mdash;</span>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted">Users</span>
+                    <span class="fw-bold text-success" id="mrc-stat-users">&mdash;</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Activity</span>
+                    <span class="fw-bold text-success" id="mrc-stat-activity">&mdash;</span>
+                </div>
+                <div class="text-muted small mb-0" id="mrc-stat-updated">Updating&hellip;</div>
+            </div>
+        </div>
+        {% endif %}
+
         {% if todays_birthdays %}
         <div class="card mt-3 border-warning">
             <div class="card-header">🎂 Birthdays Today</div>
@@ -277,4 +304,45 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if config.MRC_NETWORK_STATS_ENABLED %}
+<script>
+(function () {
+    'use strict';
+    var ACTIVITY_CLASS = {NONE: 'text-muted', LOW: 'text-success', MED: 'text-warning', HIGH: 'text-danger'};
+
+    function setStat(id, value) {
+        var el = document.getElementById(id);
+        if (el) { el.textContent = value; }
+    }
+
+    function refreshMrcStats() {
+        fetch('{{ url_for("main.mrc_network_stats_json") }}', {credentials: 'same-origin'})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) { return; }
+                setStat('mrc-stat-bbses', data.bbses);
+                setStat('mrc-stat-rooms', data.rooms);
+                setStat('mrc-stat-users', data.users);
+                var activityEl = document.getElementById('mrc-stat-activity');
+                if (activityEl) {
+                    activityEl.textContent = data.activity_label;
+                    activityEl.className = 'fw-bold ' + (ACTIVITY_CLASS[data.activity_label] || 'text-success');
+                }
+                var updatedEl = document.getElementById('mrc-stat-updated');
+                if (updatedEl) {
+                    var when = new Date().toLocaleTimeString();
+                    updatedEl.textContent = (data.stale ? 'Last known ' : 'Updated ') + when;
+                }
+            })
+            .catch(function () { /* best-effort widget -- stay quiet on failure */ });
+    }
+
+    refreshMrcStats();
+    setInterval(refreshMrcStats, 60000);
+})();
+</script>
+{% endif %}
 {% endblock %}

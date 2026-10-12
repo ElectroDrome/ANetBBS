@@ -499,6 +499,21 @@ class Config:
     MRC_BRIDGE_USE_SSL = os.environ.get('MRC_BRIDGE_USE_SSL', 'false').lower() == 'true'
     MRC_BRIDGE_WS_PATH = os.environ.get('MRC_BRIDGE_WS_PATH', '/mrcws')
 
+    # Network-wide MRC stats widget (dashboard "MRC Stats" card) -- pulls
+    # bbses/rooms/users/activity for the whole multi-relay-chat network
+    # (not just this BBS's own sessions) from the public hub status
+    # endpoint, the same figures umrc-client's own stats file shows
+    # (see mrc/bridge/main.py's _parse_umrc_stats_reply docstring for
+    # the same 4-field shape relayed from a hub STATS: reply). This is
+    # independent of MRC_BRIDGE_ENABLED -- a sysop can show the network
+    # widget even with the local chat bridge off, or vice versa.
+    MRC_NETWORK_STATS_ENABLED = os.environ.get(
+        'MRC_NETWORK_STATS_ENABLED', 'true').lower() == 'true'
+    MRC_NETWORK_STATS_URL = os.environ.get(
+        'MRC_NETWORK_STATS_URL', 'https://status-na-multi.relaychat.net/stats.json')
+    MRC_NETWORK_STATS_CACHE_SECONDS = int(
+        os.environ.get('MRC_NETWORK_STATS_CACHE_SECONDS', '30'))
+
     # Games Configuration
     GAMES_ENABLED = os.environ.get('GAMES_ENABLED', 'true').lower() == 'true'
     GAMES_DATA_DIR = os.path.join(DATA_DIR, 'games')

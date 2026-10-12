@@ -2,7 +2,11 @@
 """
 Main blueprint for home page and general views
 """
-from flask import Blueprint, render_template, request, abort, current_app
+import threading
+import time
+
+import requests
+from flask import Blueprint, render_template, request, abort, current_app, jsonify
 from flask_login import current_user
 from datetime import datetime, timedelta
 
@@ -12,6 +16,90 @@ from ..models import (db, Board, Post, Message, UserSession, User,
 from ..features.access_control import evaluate_access
 
 main_bp = Blueprint('main', __name__)
+
+# In-memory cache for the dashboard's "MRC Stats" widget -- same
+# key/lock shape as control.py's _probe_cached. ANetBBS's web service
+# runs single-process (deploy/serve.py, eventlet's native WSGI server,
+# no gunicorn worker fan-out), so a module-level cache is shared by
+# every request and genuinely cuts traffic to the remote hub status
+# endpoint regardless of how often browsers poll /api/mrc-network-stats.
+_mrc_stats_cache_lock = threading.Lock()
+_mrc_stats_cache = None  # (data_dict, expires_at) or None before the first fetch
+
+# Confirmed against docs/27-mrc-chat.md's "Stats file (mrcstats.dat)"
+# section (itself confirmed against umrc-client's real behavior): the
+# hub's activity figure is a fixed 0-3 scale (none/low/medium/high),
+# not an open-ended count -- this widget shows the same number the
+# bridge's own umrc-client stats-file feature does, just read from the
+# public hub endpoint instead of relayed through this BBS's own bridge
+# connection. Anything outside 0-3 (a hub protocol change, a transient
+# garbage value) clamps to the nearest end rather than failing.
+_MRC_ACTIVITY_LABELS = {0: 'NONE', 1: 'LOW', 2: 'MED', 3: 'HIGH'}
+
+
+def _mrc_activity_label(activity):
+    if activity <= 0:
+        return _MRC_ACTIVITY_LABELS[0]
+    if activity >= 3:
+        return _MRC_ACTIVITY_LABELS[3]
+    return _MRC_ACTIVITY_LABELS[activity]
+
+
+def _fetch_mrc_network_stats():
+    """Fetch and cache the public MRC hub's network-wide bbses/rooms/
+    users/activity counts -- the same 4 figures umrc-client's own
+    stats file shows (see mrc/bridge/main.py's _parse_umrc_stats_reply
+    docstring for the identical 4-field shape relayed from a hub
+    STATS: reply; this widget instead reads the hub's own public JSON
+    status endpoint, so it works even with the local MRC bridge off).
+
+    Best-effort dashboard decoration, never load-bearing: on a fetch
+    error, returns the last good reading (marked stale=True) if one
+    exists, or None if there isn't one yet.
+    """
+    global _mrc_stats_cache
+    now = time.time()
+    with _mrc_stats_cache_lock:
+        if _mrc_stats_cache and now < _mrc_stats_cache[1]:
+            return _mrc_stats_cache[0]
+
+    url = current_app.config.get('MRC_NETWORK_STATS_URL')
+    ttl = current_app.config.get('MRC_NETWORK_STATS_CACHE_SECONDS', 30)
+    try:
+        resp = requests.get(url, timeout=8, headers={'User-Agent': 'ANetBBS/1.0'})
+        resp.raise_for_status()
+        stats = (resp.json() or {}).get('stats') or {}
+        bbses = int(stats.get('bbses', 0))
+        rooms = int(stats.get('rooms', 0))
+        users = int(stats.get('users', 0))
+        activity = int(stats.get('activity', 0))
+    except Exception:
+        with _mrc_stats_cache_lock:
+            stale = _mrc_stats_cache[0] if _mrc_stats_cache else None
+        return dict(stale, stale=True) if stale else None
+
+    data = {
+        'ok': True,
+        'bbses': bbses,
+        'rooms': rooms,
+        'users': users,
+        'activity': activity,
+        'activity_label': _mrc_activity_label(activity),
+        'stale': False,
+    }
+    with _mrc_stats_cache_lock:
+        _mrc_stats_cache = (data, now + ttl)
+    return data
+
+
+@main_bp.route('/api/mrc-network-stats')
+def mrc_network_stats_json():
+    if not current_app.config.get('MRC_NETWORK_STATS_ENABLED'):
+        abort(404)
+    data = _fetch_mrc_network_stats()
+    if not data:
+        return jsonify({'ok': False}), 502
+    return jsonify(data)
 
 
 # Category landing pages for the navbar Tools dropdown -- replaces the

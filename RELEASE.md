@@ -1,3 +1,9 @@
+# ANetBBS v1.1.38 — Web dashboard MRC Stats widget, plus a small internal MRC-theme follow-up (October 2026)
+
+The home page's sidebar can now show a live "MRC Stats" card (BBSes, Rooms, Users, Activity) reflecting the whole multi-relay-chat network, not just this BBS's own sessions — reads directly from the public hub status endpoint, so it works independently of whether the local MRC bridge is enabled. Cached server-side and refreshed in the browser once a minute; falls back to the last known reading rather than erroring out if the remote is briefly unreachable. Set `MRC_NETWORK_STATS_ENABLED=false` to hide the card entirely.
+
+Also rolls in a same-day outside-contributed follow-up (github.com/anetonline/ANetBBS/pull/24) to the prior release's MRC budget-parity work: a small internal cleanup (an unused import removed from a test file) and a correctness fix in the Mystic theme-layout art-reading helper, which now checks every art segment covering a screen row instead of stopping at the first match. No bundled theme currently overlaps segments, so this had no visible effect on any shipped theme — it closes the gap for a future theme that might.
+
 # ANetBBS v1.1.37 — MRC: uMRC prefix budget, per-sender chat pacing, /b broadcast fix, and the same budget parity for ANetBBS's own clients (October 2026)
 
 Two outside contributions (github.com/anetonline/ANetBBS/pull/22 and pull/23) refine the MRC bridge's and clients' handling of message-length limits. The bridge now recognizes uMRC's own client-embedded styled display-name prefix and treats it as overhead on top of the 140-character wire cap rather than counting it against the typed-text budget, matching the real `umrc-bridge` daemon's behavior. It also adds per-sender pacing between outgoing chat packets to avoid flooding the upstream hub, and fixes a bug where a uMRC `/b` network-wide broadcast was incorrectly narrowed to the sender's current room.
