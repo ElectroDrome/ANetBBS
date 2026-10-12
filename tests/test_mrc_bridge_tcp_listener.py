@@ -36,12 +36,15 @@ import json
 import re
 import sys
 import tempfile
+import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from mrc.bridge.main import BridgeApp, MRC_TCP_MAX_LINE_BYTES  # noqa: E402
+from mrc.bridge.main import (  # noqa: E402
+    BridgeApp, MRC_CHAT_PACKET_SPACING, MRC_TCP_MAX_LINE_BYTES)
 from mrc.bridge.mrc_protocol import MRCProtocol  # noqa: E402
 
 
@@ -52,10 +55,12 @@ class _FakeMRCConnection:
 
     def __init__(self):
         self.sent = []
+        self.sent_at = []
         self.connected = True
 
     async def send_packet(self, packet: str):
         self.sent.append(packet)
+        self.sent_at.append(time.monotonic())
 
     def sent_messages(self):
         return [MRCProtocol.parse_packet(p) for p in self.sent]
@@ -138,6 +143,22 @@ class _TcpBridgeHarness(unittest.IsolatedAsyncioTestCase):
     async def _read_packet(self, reader, timeout=2.0):
         line = await asyncio.wait_for(reader.readline(), timeout=timeout)
         return MRCProtocol.parse_packet(line.decode())
+
+    async def _settle(self, timeout=10.0):
+        # Wait until no new packet has gone out for a little longer than
+        # the bridge's per-sender chat spacing -- a split line's later
+        # chunks are deliberately sent MRC_CHAT_PACKET_SPACING apart, so
+        # a fixed short sleep would miss them.
+        quiet = MRC_CHAT_PACKET_SPACING + 0.2
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout
+        count, since = len(self.app.mrc.sent), loop.time()
+        while loop.time() < deadline:
+            await asyncio.sleep(0.05)
+            if len(self.app.mrc.sent) != count:
+                count, since = len(self.app.mrc.sent), loop.time()
+            elif loop.time() - since >= quiet:
+                return
 
     async def _wait_until(self, predicate, timeout=2.0, interval=0.02):
         loop = asyncio.get_event_loop()
@@ -329,7 +350,7 @@ class MrcTcpLongMessageSplitTests(_TcpBridgeHarness):
 
         ok = await self._wait_until(lambda: len(self.app.mrc.sent) >= 1, timeout=3.0)
         self.assertTrue(ok)
-        await asyncio.sleep(0.2)  # let every chunk's packet land, not just the first
+        await self._settle()  # let every chunk's packet land, not just the first
 
         sent = self.app.mrc.sent_messages()
         self.assertGreater(len(sent), 1, "a 280-char message must split into more than one packet")
@@ -360,7 +381,7 @@ class MrcTcpLongMessageSplitTests(_TcpBridgeHarness):
 
         ok = await self._wait_until(lambda: len(self.app.mrc.sent) >= 1, timeout=3.0)
         self.assertTrue(ok)
-        await asyncio.sleep(0.2)
+        await self._settle()
 
         sent = [m for m in self.app.mrc.sent_messages() if m["to_user"] == "NightOwl"]
         self.assertGreater(len(sent), 1)
@@ -372,6 +393,191 @@ class MrcTcpLongMessageSplitTests(_TcpBridgeHarness):
             r'\(\d+/\d+\)\s*', '', ' '.join(m["message"] for m in sent))
         for word in long_text.split(' '):
             self.assertIn(word, reassembled_plain)
+
+        writer.close()
+        await writer.wait_closed()
+
+
+class MrcTcpUmrcPrefixBudgetTests(_TcpBridgeHarness):
+    """umrc-client embeds its own styled display name at the start of
+    every plain chat line and sizes each packet as up to 140 chars of
+    TYPED text with that prefix on top -- the real umrc-bridge daemon
+    and the hub pass such a line through as-is. The bridge applies the
+    140 budget to the text after the prefix, so a full-length uMRC line
+    goes out as one packet and any split piece keeps the sender's name.
+    Prefix below is a real one captured from a live umrc-client session
+    via MRC_BRIDGE_LOG_LEVEL=DEBUG."""
+
+    PREFIX = "|12|16@|11|16Winzlo|09{|14Down|09-|14Lo|09} |14"
+
+    async def _send_and_collect(self, writer, message):
+        await self._send(writer, "Winzlo", "site", "lobby", "", "", "lobby", message)
+        ok = await self._wait_until(lambda: len(self.app.mrc.sent) >= 1, timeout=3.0)
+        self.assertTrue(ok)
+        await self._settle()  # let every chunk's packet land, not just the first
+        return self.app.mrc.sent_messages()
+
+    async def test_full_length_umrc_line_passes_through_as_one_packet(self):
+        reader, writer, _sid = await self._joined_client("Winzlo")
+        self.app.mrc.sent.clear()
+
+        # The exact first packet uMRC sent for the 280-char test line:
+        # 139 chars of typed text + the 47-char prefix = 186 chars.
+        text = ' '.join(f"This is sentence {i}." for i in range(1, 8))
+        self.assertEqual(len(text), 139)
+        message = self.PREFIX + text
+
+        sent = await self._send_and_collect(writer, message)
+        self.assertEqual(len(sent), 1, "an in-budget uMRC line must not be split")
+        self.assertEqual(sent[0]["message"], message)
+        self.assertEqual(sent[0]["to_room"], "lobby", "room chat keeps its room")
+
+        writer.close()
+        await writer.wait_closed()
+
+    async def test_overlong_umrc_line_repeats_prefix_on_every_chunk(self):
+        reader, writer, _sid = await self._joined_client("Winzlo")
+        self.app.mrc.sent.clear()
+
+        text = ' '.join(f"word{i}" for i in range(1, 60))  # well over 140 chars
+        self.assertGreater(len(text), 140)
+
+        sent = await self._send_and_collect(writer, self.PREFIX + text)
+        self.assertGreater(len(sent), 1)
+        for m in sent:
+            self.assertTrue(m["message"].startswith(self.PREFIX),
+                            "every chunk must carry the sender's styled name")
+            self.assertLessEqual(len(m["message"]) - len(self.PREFIX), 140)
+
+        # Breaks must fall on spaces (same rule as umrc-client's own
+        # sendChatMessage()): every token in every chunk is a whole
+        # original word, and together they are the original text.
+        words = text.split(' ')
+        tokens = []
+        for m in sent:
+            body = re.sub(r'^\(\d+/\d+\) ', '', m["message"][len(self.PREFIX):])
+            for tok in body.split(' '):
+                self.assertIn(tok, words, "a chunk boundary split a word")
+                tokens.append(tok)
+        self.assertEqual(tokens, words)
+
+        writer.close()
+        await writer.wait_closed()
+
+    # 140 chars of typed text -- the most uMRC ever puts in one packet.
+    TEXT_140 = ' '.join(f"This is sentence {i}." for i in range(1, 8)) + "!"
+
+    async def _assert_single_unsplit_packet(self, message, to_user="", to_room="lobby"):
+        reader, writer, _sid = await self._joined_client("Winzlo")
+        self.app.mrc.sent.clear()
+        await self._send(writer, "Winzlo", "site", "lobby", to_user, "", to_room, message)
+        ok = await self._wait_until(lambda: len(self.app.mrc.sent) >= 1, timeout=3.0)
+        self.assertTrue(ok)
+        await self._settle()  # prove no second chunk follows
+        sent = self.app.mrc.sent_messages()
+        self.assertEqual(len(sent), 1, "an in-budget uMRC line must not be split")
+        self.assertEqual(sent[0]["message"], message)
+        self.assertEqual(sent[0]["to_user"], to_user)
+        writer.close()
+        await writer.wait_closed()
+        return sent[0]
+
+    async def test_umrc_me_action_passes_through_as_one_packet(self):
+        self.assertEqual(len(self.TEXT_140), 140)
+        pkt = await self._assert_single_unsplit_packet("|15* |13Winzlo " + self.TEXT_140)
+        self.assertEqual(pkt["to_room"], "lobby")
+
+    async def test_umrc_direct_message_passes_through_as_one_packet(self):
+        prefix = "|15* |08(|15Winzlo|08/|14DirectMsg|08) |07"
+        pkt = await self._assert_single_unsplit_packet(
+            prefix + self.TEXT_140, to_user="NightOwl", to_room="")
+        self.assertEqual(pkt["to_room"], "")
+
+    async def test_umrc_broadcast_passes_through_to_every_room(self):
+        # umrc-client's /b sends toRoom "" (all rooms); the bridge
+        # forwards it with to_room still empty, as umrc-bridge does.
+        prefix = "|15* |08(|15Winzlo|08/|14Broadcast|08) |07"
+        pkt = await self._assert_single_unsplit_packet(prefix + self.TEXT_140, to_room="")
+        self.assertEqual(pkt["to_room"], "")
+        self.assertEqual(pkt["from_room"], "lobby")
+
+    async def test_maximum_length_umrc_prefix_is_honored(self):
+        # umrc-client builds the prefix in a char[80] buffer, so 79 is
+        # the longest it can send; pad a styled-name suffix to exactly that.
+        base = "|12|16@|11|16Winzlo|09{"
+        tail = "|09} |14"
+        prefix = base + "X" * (79 - len(base) - len(tail)) + tail
+        self.assertEqual(len(prefix), 79)
+        await self._assert_single_unsplit_packet(prefix + self.TEXT_140)
+
+    async def test_overlong_first_word_is_not_treated_as_a_prefix(self):
+        reader, writer, _sid = await self._joined_client("Winzlo")
+        self.app.mrc.sent.clear()
+
+        # Contains the nick but is longer than umrc-client's 79-char
+        # prefix buffer allows -- must fall back to the plain
+        # split-at-140 behavior rather than being repeated on every chunk.
+        bogus = "Winzlo" + "x" * 74
+        self.assertEqual(len(bogus + " "), 81)
+        text = ' '.join(f"word{i}" for i in range(1, 40))
+
+        sent = await self._send_and_collect(writer, bogus + " " + text)
+        self.assertGreater(len(sent), 1)
+        for m in sent:
+            self.assertLessEqual(len(m["message"]), 140)
+
+        writer.close()
+        await writer.wait_closed()
+
+
+class MrcTcpChatPacingTests(_TcpBridgeHarness):
+    """The hub's flood control discards a chat line that arrives too
+    soon after the same sender's previous one, so the bridge spaces
+    each sender's chat packets at least MRC_CHAT_PACKET_SPACING apart:
+    between the chunks of a line it splits itself, and between
+    separate lines that arrive back to back."""
+
+    PREFIX = "|12|16@|11|16Winzlo|09{|14Down|09-|14Lo|09} |14"
+    SLACK = 0.02  # timer granularity
+
+    def _gaps(self):
+        t = self.app.mrc.sent_at
+        return [b - a for a, b in zip(t, t[1:])]
+
+    async def test_chunks_of_a_split_line_are_spaced(self):
+        reader, writer, _sid = await self._joined_client("Winzlo")
+        self.app.mrc.sent.clear()
+        self.app.mrc.sent_at.clear()
+
+        text = ' '.join(f"word{i}" for i in range(1, 60))  # needs 3 chunks
+        await self._send(writer, "Winzlo", "site", "lobby", "", "", "lobby", self.PREFIX + text)
+        ok = await self._wait_until(lambda: len(self.app.mrc.sent) >= 1, timeout=3.0)
+        self.assertTrue(ok)
+        await self._settle()
+
+        self.assertGreater(len(self.app.mrc.sent), 1)
+        for gap in self._gaps():
+            self.assertGreaterEqual(gap, MRC_CHAT_PACKET_SPACING - self.SLACK)
+
+        writer.close()
+        await writer.wait_closed()
+
+    async def test_back_to_back_lines_from_one_sender_are_spaced(self):
+        reader, writer, _sid = await self._joined_client("Winzlo")
+        self.app.mrc.sent.clear()
+        self.app.mrc.sent_at.clear()
+
+        sent_from = time.monotonic()
+        await self._send(writer, "Winzlo", "site", "lobby", "", "", "lobby", self.PREFIX + "first")
+        await self._send(writer, "Winzlo", "site", "lobby", "", "", "lobby", self.PREFIX + "second")
+        ok = await self._wait_until(lambda: len(self.app.mrc.sent) >= 2, timeout=3.0)
+        self.assertTrue(ok)
+
+        # The first line goes out immediately; only the second waits.
+        self.assertLess(self.app.mrc.sent_at[0] - sent_from, MRC_CHAT_PACKET_SPACING / 2)
+        self.assertGreaterEqual(self._gaps()[0], MRC_CHAT_PACKET_SPACING - self.SLACK)
+        self.assertEqual([m["message"] for m in self.app.mrc.sent_messages()],
+                         [self.PREFIX + "first", self.PREFIX + "second"])
 
         writer.close()
         await writer.wait_closed()
@@ -499,14 +705,20 @@ class MrcTcpUnboundedBufferProtectionTests(_TcpBridgeHarness):
             for i in range(20)
         )
         self.assertLess(len(packets), MRC_TCP_MAX_LINE_BYTES)
-        writer.write(packets)
-        await writer.drain()
 
-        # Session must still be alive and the connection still open --
-        # confirmed by successfully sending one more packet and getting
-        # a reply back over the fake hub, not by the socket closing.
-        ok = await self._wait_until(
-            lambda: len(self.app.mrc.sent_messages()) >= 20)
+        # This test is about read-buffer handling, not chat pacing: with
+        # the real per-sender spacing, 20 chat lines from one sender take
+        # 19 x MRC_CHAT_PACKET_SPACING to forward (see
+        # MrcTcpChatPacingTests for that behavior), so turn it off here.
+        with mock.patch("mrc.bridge.main.MRC_CHAT_PACKET_SPACING", 0):
+            writer.write(packets)
+            await writer.drain()
+
+            # Session must still be alive and the connection still open --
+            # confirmed by successfully sending one more packet and getting
+            # a reply back over the fake hub, not by the socket closing.
+            ok = await self._wait_until(
+                lambda: len(self.app.mrc.sent_messages()) >= 20)
         self.assertTrue(ok, 'a legitimate multi-packet burst must not trip '
                          'the overflow protection')
 

@@ -64,6 +64,15 @@ _BRIDGE_DIR = Path(__file__).parent
 _WEB_DIR    = _BRIDGE_DIR.parent / "web"
 
 MRC_MAX_MESSAGE_LEN = 140
+# Minimum seconds between two chat packets from the same sender on
+# their way to the hub (see _send_chat_packet). The hub's flood control
+# discards a chat line that arrives too soon after the same sender's
+# previous one -- found live with umrc-client, where 0.5s between
+# chunks lost lines. 0.6s matches the chunk delay both of ANetBBS's own
+# clients already use (anetbbs/features/mrc_chat.py WIRE_CHUNK_DELAY,
+# mrc/web/index.html WIRE_CHUNK_DELAY_MS). umrc-client itself spaces
+# its own chunks 0.75s apart, so its traffic is never delayed by this.
+MRC_CHAT_PACKET_SPACING = 0.6
 # Real gap found in a security review: handle_mrc_tcp_connection's
 # newline-delimited read loop (new this session, for native
 # umrc-client support) had no cap on how large its buffer could grow
@@ -330,6 +339,55 @@ def _split_long_message(text: str, cap: int = MRC_MAX_MESSAGE_LEN,
         return [repeat_prefix + c for c in chunks]
     t = len(chunks)
     return [f'{repeat_prefix}({i+1}/{t}) {c}' for i, c in enumerate(chunks)]
+
+
+# umrc-client (github.com/codefenix-dev/uMRC, umrc-client/main.c)
+# builds every outgoing chat line as <prefix><typed text>, where the
+# typed text gets the full 140 chars on its own and the prefix is
+# re-prepended to every chunk (sendChatMessage()). The prefix is built
+# in a char prefix[80] buffer with snprintf, so it can never exceed 79
+# chars -- e.g. a fully-decorated styled name: 1-char prefix symbol +
+# up-to-35-char name + up-to-32-char suffix (pipe codes included) +
+# five pipe color codes. Anything longer is not a real uMRC prefix.
+_UMRC_PREFIX_MAX_LEN = 79
+_PIPE_COLOR_RE = re.compile(r'\|[0-9]{2}')
+_UMRC_PREFIX_RE = re.compile(r'^\S+ (?:\|[0-9]{2})*')
+# Fixed prefix templates umrc-client's processUserCommand() uses for
+# /me, /t /msg /r (DirectMsg), and /b (Broadcast).
+_UMRC_FIXED_PREFIXES = (
+    "|15* |13{nick} ",
+    "|15* |08(|15{nick}|08/|14DirectMsg|08) |07",
+    "|15* |08(|15{nick}|08/|14Broadcast|08) |07",
+)
+
+
+def _umrc_display_prefix(message: str, nick: str) -> str:
+    """Return the prefix umrc-client embedded at the start of `message`,
+    or '' if it doesn't start with a recognizable one.
+
+    Plain chat is "<styled name> <text color><typed text>", e.g.
+    "|12|16@|11|16Winzlo|09{|14Down|09-|14Lo|09} |14This is ..."
+    (main.c's gDisplayChatterName + " |NN"), recognized when the first
+    space-delimited token, with pipe color codes stripped, contains the
+    sender's nick. Pipe color codes immediately after that space belong
+    to the prefix too, so a continuation chunk keeps the sender's text
+    color. /me, DirectMsg, and Broadcast lines use the fixed templates
+    in _UMRC_FIXED_PREFIXES."""
+    msg = message or ''
+    if not nick:
+        return ''
+    for tpl in _UMRC_FIXED_PREFIXES:
+        fixed = tpl.format(nick=nick)
+        if msg[:len(fixed)].lower() == fixed.lower():
+            return msg[:len(fixed)]
+    m = _UMRC_PREFIX_RE.match(msg)
+    if not m:
+        return ''
+    prefix = m.group(0)
+    if len(prefix) > _UMRC_PREFIX_MAX_LEN:
+        return ''
+    head = _PIPE_COLOR_RE.sub('', prefix.split(' ', 1)[0])
+    return prefix if nick.lower() in head.lower() else ''
 
 
 _MIN_BACKGROUND_LOOP_INTERVAL = 5.0
@@ -822,6 +880,9 @@ class BridgeApp:
 
         self.websockets:   Dict[int, web.WebSocketResponse] = {}
         self.rate_limiter: Dict[int, float]                 = {}
+        # Earliest monotonic time each sender (casefolded nick) may send
+        # their next chat packet to the hub -- see _send_chat_packet.
+        self._next_chat_slot: Dict[str, float] = {}
         # Real caller IP per WebSocket connection, keyed by ws_id --
         # populated in handle_websocket() at accept time (for the web
         # client, from the incoming HTTP request, honoring nginx's
@@ -2347,6 +2408,33 @@ class BridgeApp:
     # send_message
     # ------------------------------------------------------------------
 
+    async def _send_chat_packet(self, nick: str, pkt: str):
+        """Send one chat packet to the hub, at least
+        MRC_CHAT_PACKET_SPACING seconds after the same sender's previous
+        chat packet. Keyed by sender, not by connection, because the
+        hub's flood control sees the sender: this covers the pieces of
+        a line the bridge splits itself, a client's next line arriving
+        right behind them, and the same user on two transports at once.
+
+        The slot is reserved before awaiting (no await between reading
+        and writing _next_chat_slot), so concurrent sends for one sender
+        queue up in order without needing a lock. A sender with no
+        recent chat packet is sent immediately."""
+        # Also created here, not only in __init__: several existing test
+        # suites build BridgeApp via object.__new__() and skip __init__.
+        slots = getattr(self, "_next_chat_slot", None)
+        if slots is None:
+            slots = self._next_chat_slot = {}
+        now = time.monotonic()
+        for k in [k for k, t in slots.items() if t <= now]:
+            del slots[k]
+        key = _casefold(nick)
+        send_at = max(now, slots.get(key, now))
+        slots[key] = send_at + MRC_CHAT_PACKET_SPACING
+        if send_at > now:
+            await asyncio.sleep(send_at - now)
+        await self.mrc.send_packet(pkt)
+
     async def _handle_send_message(self, ws_id: int, data: dict):
         ws   = self.websockets.get(ws_id)
         sess = self.db.get_session(str(ws_id))
@@ -2379,7 +2467,7 @@ class BridgeApp:
 
         for chunk in chunks:
             pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, "", room, chunk)
-            await self.mrc.send_packet(pkt)
+            await self._send_chat_packet(nick, pkt)
 
     # ------------------------------------------------------------------
     # direct_message
@@ -2403,7 +2491,7 @@ class BridgeApp:
         prefix = _dm_wrapper_prefix(self._session_display_handle(sess))
         for chunk in _split_long_message(message, repeat_prefix=prefix):
             pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, to_user, "", chunk)
-            await self.mrc.send_packet(pkt)
+            await self._send_chat_packet(nick, pkt)
 
     # ------------------------------------------------------------------
     # CTCP request
@@ -2469,7 +2557,15 @@ class BridgeApp:
             except Exception:
                 new_room = None
 
-        await self.mrc.send_packet(MRCProtocol.create_server_command(eff_nick, self.config["bridge_bbs"], room, normalized))
+        pkt = MRCProtocol.create_server_command(eff_nick, self.config["bridge_bbs"], room, normalized)
+        if normalized.upper().startswith("BROADCAST "):
+            # A broadcast is a chat line the hub fans out to every room,
+            # so it gets the same per-sender spacing as any other chat
+            # packet -- both ANetBBS clients send a long /broadcast as
+            # several BROADCAST commands in a row.
+            await self._send_chat_packet(eff_nick, pkt)
+        else:
+            await self.mrc.send_packet(pkt)
 
         if normalized.upper() == "WHOON":
             # WHOON's reply is a plain, hub-formatted cosmetic text dump --
@@ -2733,23 +2829,39 @@ class BridgeApp:
         # whose own client-side chunking didn't quite stay under this
         # bridge's wire budget had its tail silently dropped, losing
         # whole sentences with zero indication anything was lost.
+        #
         # umrc-client's own plain chat line already embeds its own
         # styled display name into `message` itself (main.c's
-        # gDisplayChatterName prefix), so unlike _handle_send_message's
-        # WebSocket path (whose clients send plain unstyled text) there
-        # is no separable prefix to re-apply per chunk here -- the
-        # nick/style only ever appears on the first chunk, same as any
-        # other client that embeds its own prefix client-side.
-        chunks = _split_long_message(message) or ['']
+        # gDisplayChatterName prefix), and uMRC sizes each packet as up
+        # to MRC_MAX_MESSAGE_LEN chars of TYPED text with that prefix
+        # on top. When the prefix is recognizable, the 140 budget
+        # applies to the typed text after it: an in-budget line passes
+        # through as one packet, exactly what the real umrc-bridge
+        # daemon sends, and anything longer is split with the prefix
+        # repeated on every chunk, so each piece keeps the sender's
+        # name and text color. Lines without a recognizable prefix use
+        # the split-at-140 behavior.
+        prefix = _umrc_display_prefix(message, nick)
+        if prefix:
+            chunks = (_split_long_message(message[len(prefix):],
+                                          cap=MRC_MAX_MESSAGE_LEN + len(prefix),
+                                          repeat_prefix=prefix)
+                      or [message])
+        else:
+            chunks = _split_long_message(message) or ['']
 
         for chunk in chunks:
             if not to_user:
-                # Room broadcast.
-                pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, "", room, chunk)
+                # Room chat carries the sender's room as to_room. An
+                # empty to_room is umrc-client's /b broadcast to every
+                # room (main.c sends it with toRoom ""), and umrc-bridge
+                # forwards it unchanged, so it is kept empty here too.
+                pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, "",
+                                                 room if to_room else "", chunk)
             else:
                 # Directed message (/t, /r).
                 pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, to_user, "", chunk)
-            await self.mrc.send_packet(pkt)
+            await self._send_chat_packet(nick, pkt)
 
     async def handle_mrc_tcp_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Raw-TCP counterpart of handle_websocket(), for a directly-
