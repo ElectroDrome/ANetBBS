@@ -154,31 +154,46 @@ _ART_CSI_RE = re.compile(r'\x1b\[([0-9;]*)([A-Za-z])')
 def art_char_at(layout: 'ThemeLayout', x: int, y: int) -> Optional[str]:
     """Return the static border-art character a theme draws at screen
     cell (x, y), both 1-based like the .ini coordinates, or None if no
-    art segment covers that cell. SGR color codes take no space;
+    art segment draws that cell. SGR color codes take no space;
     cursor-forward (ESC[nC) advances n columns; any other escape
-    sequence is skipped. Used to check a theme's layout around an
-    element before writing past it -- e.g. whether the art has a "/"
-    right after BUFFER for a second number."""
-    for first_line, num_lines, disp_x, disp_y, _fg in layout.art.values():
+    sequence is skipped. Every segment covering row y is checked, in
+    the order mrc_chat.py's _mystic_draw_frame draws them (TOPANSI,
+    then BOTANSI), and the last one that draws the cell wins, since
+    that is what ends up on screen. Used to check a theme's layout
+    around an element before writing past it -- e.g. whether the art
+    has a "/" right after BUFFER for a second number."""
+    found = None
+    for key in _ART_KEYS:
+        art = layout.art.get(key)
+        if not art:
+            continue
+        first_line, num_lines, disp_x, disp_y, _fg = art
         if not (disp_y <= y < disp_y + num_lines):
             continue
         segment = extract_art_segment(layout.ansifile, first_line, num_lines)
         row = y - disp_y
         if row >= len(segment):
-            return None
-        line = segment[row]
-        col = disp_x
-        i = 0
-        while i < len(line):
-            m = _ART_CSI_RE.match(line, i)
-            if m:
-                if m.group(2) == 'C':
-                    col += int(m.group(1) or 1)
-                i = m.end()
-                continue
-            if col == x:
-                return line[i]
-            col += 1
-            i += 1
-        return None
+            continue
+        ch = _segment_line_char_at(segment[row], disp_x, x)
+        if ch is not None:
+            found = ch
+    return found
+
+
+def _segment_line_char_at(line: str, disp_x: int, x: int) -> Optional[str]:
+    """The character one art line draws at column x when drawn starting
+    at column disp_x, or None if the line doesn't reach that column."""
+    col = disp_x
+    i = 0
+    while i < len(line):
+        m = _ART_CSI_RE.match(line, i)
+        if m:
+            if m.group(2) == 'C':
+                col += int(m.group(1) or 1)
+            i = m.end()
+            continue
+        if col == x:
+            return line[i]
+        col += 1
+        i += 1
     return None

@@ -5,7 +5,6 @@ up to 140 typed, what's left of the 140-char typed-text budget over
 first number turns yellow at 20 or fewer left and red at 5 or fewer
 (umrc-client's thresholds; it counts up instead).
 """
-import asyncio
 import sys
 import unittest
 from pathlib import Path
@@ -15,8 +14,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import anetbbs.core  # noqa: F401,E402  (resolves a circular import if mrc_chat is imported first)
 from anetbbs.features.mrc_chat import MRCChat  # noqa: E402
 from mrc.mystic_client.theme_layout import (  # noqa: E402
-    load_theme_layout, art_char_at, _SCRIPTS_DIR,
+    ThemeLayout, load_theme_layout, art_char_at, _SCRIPTS_DIR,
 )
+from unittest import mock  # noqa: E402
 
 
 class _FakeSession:
@@ -92,6 +92,43 @@ class MysticBufferTests(unittest.TestCase):
         self.assertIn('180\x1b[0m', text)
         self.assertNotIn('/', text.replace('\x1b[', ''))
         self.assertEqual(text.count('H'), 1)
+
+
+class ArtCharAtOverlapTests(unittest.TestCase):
+    """art_char_at() checks every art segment covering a row, not just
+    the first, and the last-drawn one (BOTANSI after TOPANSI) wins --
+    no bundled theme overlaps segments, so these use a synthetic
+    layout."""
+
+    LINES = {
+        1: 'AAAA',      # TOPANSI line, drawn at (1, 5)
+        2: '\x1b[1;31mBB',  # BOTANSI line, drawn at (3, 5) -- overlaps cols 3-4
+    }
+
+    def _layout(self):
+        return ThemeLayout('synthetic.ans',
+                           {'TOPANSI': (1, 1, 1, 5, 7), 'BOTANSI': (2, 1, 3, 5, 7)},
+                           {})
+
+    def _segment(self, _ansifile, first_line, num_lines):
+        return [self.LINES[first_line + i] for i in range(num_lines)]
+
+    def test_cell_only_in_first_segment_is_found(self):
+        with mock.patch('mrc.mystic_client.theme_layout.extract_art_segment', self._segment):
+            self.assertEqual(art_char_at(self._layout(), 1, 5), 'A')
+
+    def test_cell_in_both_segments_uses_last_drawn(self):
+        with mock.patch('mrc.mystic_client.theme_layout.extract_art_segment', self._segment):
+            self.assertEqual(art_char_at(self._layout(), 3, 5), 'B')
+
+    def test_cell_only_in_second_segment_is_found(self):
+        self.LINES = {1: 'A', 2: '\x1b[1;31mBB'}
+        with mock.patch('mrc.mystic_client.theme_layout.extract_art_segment', self._segment):
+            self.assertEqual(art_char_at(self._layout(), 4, 5), 'B')
+
+    def test_cell_no_segment_draws_is_none(self):
+        with mock.patch('mrc.mystic_client.theme_layout.extract_art_segment', self._segment):
+            self.assertIsNone(art_char_at(self._layout(), 9, 5))
 
 
 if __name__ == '__main__':
