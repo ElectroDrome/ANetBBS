@@ -114,9 +114,8 @@ class RoomChatSplitColorCarryoverTests(unittest.TestCase):
         chat._connected = True
         chat._color_idx = 2  # some non-default color
         color = chat._current_color_pipe()
-        # Force a real split well under the raw 140-char hub limit --
-        # same technique as the established wire-chunk-delay tests.
-        chat._handle_overhead = 100  # cap = max(10, 140-100) = 40
+        # 300 typed chars -- well past the 140-char typed-text budget,
+        # so the line must split.
         long_line = 'word ' * 60
 
         lines = iter([long_line, None])
@@ -153,25 +152,34 @@ class RoomChatSplitColorCarryoverTests(unittest.TestCase):
 
 
 class ActionAndBroadcastOverheadTests(unittest.TestCase):
-    def test_me_action_respects_action_wire_cap_not_bare_140(self):
+    def test_me_action_gets_full_typed_budget_regardless_of_overhead(self):
+        # The bridge carries its "|15* |13{nick} ...|07" wrapper on top
+        # of the 140-char typed-text budget, so a 140-char action goes
+        # out as one chunk however large the reported overhead is.
         chat = _make_chat()
         chat._connected = True
-        # Simulate what the bridge would have told us on join.
-        chat._action_overhead = 100  # cap = max(10, 140-100) = 40
+        chat._action_overhead = 100
+        action = ('word ' * 28)[:139] + 'x'
+
+        _run(chat._handle_slash(f'/me {action}'))
+
+        self.assertEqual(len(chat.sent), 1)
+        self.assertEqual(chat.sent[0]['message'], '* ' + action)
+
+    def test_long_me_action_splits_at_typed_budget(self):
+        chat = _make_chat()
+        chat._connected = True
         long_action = 'word ' * 60
 
         with patch('anetbbs.features.mrc_chat.asyncio.sleep', new=AsyncMock()):
             _run(chat._handle_slash(f'/me {long_action}'))
 
-        self.assertGreater(len(chat.sent), 1,
-                          'a long /me must split when action_overhead is '
-                          'high, not silently overflow the true wire limit')
+        self.assertGreater(len(chat.sent), 1)
         for sent in chat.sent:
-            # The client always adds "* " on top of what _split_for_wire
-            # already capped -- the two together plus action_overhead
-            # must never exceed the real 140-char hub limit.
-            wire_len = chat._action_overhead + len(sent['message'])
-            self.assertLessEqual(wire_len, MAX_OUTGOING_CHARS)
+            # The client adds "* " on top of each typed chunk; the bridge
+            # swaps it for its own wrapper.
+            self.assertTrue(sent['message'].startswith('* '))
+            self.assertLessEqual(len(sent['message']) - 2, MAX_OUTGOING_CHARS)
 
     def test_me_action_with_zero_overhead_behaves_like_before(self):
         chat = _make_chat()
@@ -200,22 +208,22 @@ class ActionAndBroadcastOverheadTests(unittest.TestCase):
 
 
 class StatusBarActionCounterTests(unittest.TestCase):
-    def test_me_remaining_counter_uses_action_wire_cap(self):
+    def test_me_counter_counts_typed_text_only(self):
+        # The counter measures the typed action text against 140 (the
+        # bridge's action wrapper isn't charged against it). Past 140,
+        # it counts down what's left of the 280-char line and shows the
+        # 280 in red -- see _buffer_countdown.
         chat = _make_chat()
         chat._split_screen = True
         chat._term_columns = 100
-        chat._action_overhead = 50   # cap = max(10, 140-50) = 90
-        chat._input_buf = list('/me ' + ('x' * 95))  # 95 > 90 -> 5 over
+        chat._action_overhead = 50
+        chat._input_buf = list('/me ' + ('x' * 145))  # 149 typed in all
 
         _run(chat._draw_status_line())
 
         written = ''.join(chat.session.written)
-        # -5 (90 - 95), rendered in the red "over limit" color -- the old
-        # code (bare MAX_OUTGOING_CHARS=140) would have shown +45
-        # (140-95), wrongly telling the user they still had room.
-        self.assertIn('\x1b[1;91m-5\x1b[0m', written,
-                      f'expected the real action-cap-based remaining '
-                      f'count in the status line, got: {written!r}')
+        self.assertIn('131\x1b[0m/\x1b[1;91m280\x1b[0m', written,
+                      f'expected 131/280 with a red 280, got: {written!r}')
 
 
 class UsernickParsingTests(unittest.TestCase):

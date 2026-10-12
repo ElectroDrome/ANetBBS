@@ -64,6 +64,13 @@ _BRIDGE_DIR = Path(__file__).parent
 _WEB_DIR    = _BRIDGE_DIR.parent / "web"
 
 MRC_MAX_MESSAGE_LEN = 140
+
+# Longest style suffix (pipe codes included) a user can set, matching
+# umrc-client's chatterNameSuffix (32 chars). Stored as plain JSON in
+# the profile, so no fixed-width field depends on it. The style prefix
+# stays at 16.
+MRC_STYLE_SUFFIX_MAX_LEN = 32
+
 # Minimum seconds between two chat packets from the same sender on
 # their way to the hub (see _send_chat_packet). The hub's flood control
 # discards a chat line that arrives too soon after the same sender's
@@ -372,7 +379,14 @@ def _umrc_display_prefix(message: str, nick: str) -> str:
     sender's nick. Pipe color codes immediately after that space belong
     to the prefix too, so a continuation chunk keeps the sender's text
     color. /me, DirectMsg, and Broadcast lines use the fixed templates
-    in _UMRC_FIXED_PREFIXES."""
+    in _UMRC_FIXED_PREFIXES.
+
+    This is a heuristic: ordinary text from a non-uMRC client on the
+    raw TCP listener whose first word happens to contain the sender's
+    nick would also be read as a prefix, giving that line up to 79
+    extra chars before it splits. Impact is low -- the listener exists
+    for umrc-client connections, and the hub accepts lines well past
+    the nominal 140 (uMRC's own lines run up to 79 + 140)."""
     msg = message or ''
     if not nick:
         return ''
@@ -388,6 +402,18 @@ def _umrc_display_prefix(message: str, nick: str) -> str:
         return ''
     head = _PIPE_COLOR_RE.sub('', prefix.split(' ', 1)[0])
     return prefix if nick.lower() in head.lower() else ''
+
+
+_LEADING_PIPE_COLOR_RE = re.compile(r'^\|[0-9]{2}')
+
+
+def _leading_pipe_color(text: str) -> str:
+    """Return the one pipe color code at the very start of `text`
+    (e.g. "|14" from "|14hello"), or '' if it doesn't start with one.
+    Only one: ANetBBS's clients prepend a single typing color, so any
+    further code right after it was typed by the user and counts."""
+    m = _LEADING_PIPE_COLOR_RE.match(text or '')
+    return m.group(0) if m else ''
 
 
 _MIN_BACKGROUND_LOOP_INTERVAL = 5.0
@@ -1008,7 +1034,7 @@ class BridgeApp:
         self.exit_message_tpl = self.config.get("exit_message", "|07- |12{handle} |04has left chat.")
 
         self.default_style_prefix = _sanitize_no_tilde(self.config.get("default_style_prefix", ""), 16)
-        self.default_style_suffix = _sanitize_no_tilde(self.config.get("default_style_suffix", ""), 16)
+        self.default_style_suffix = _sanitize_no_tilde(self.config.get("default_style_suffix", ""), MRC_STYLE_SUFFIX_MAX_LEN)
         self.default_style_color  = _norm_pipe_color(self.config.get("default_style_color", "07"))
 
         self.ctcp_room = MRCProtocol.norm_room(_ctcp_room_from_config(self.config))
@@ -2139,7 +2165,7 @@ class BridgeApp:
         prof = self.db.get_profile(handle) or {}
 
         style_prefix       = _sanitize_no_tilde(prof.get("style_prefix",       self.default_style_prefix), 16)
-        style_suffix       = _sanitize_no_tilde(prof.get("style_suffix",       self.default_style_suffix), 16)
+        style_suffix       = _sanitize_no_tilde(prof.get("style_suffix",       self.default_style_suffix), MRC_STYLE_SUFFIX_MAX_LEN)
         style_color        = _norm_pipe_color(prof.get("style_color",           self.default_style_color))
         style_prefix_color = _norm_pipe_color(prof.get("style_prefix_color",   style_color))
         style_handle_color = _norm_pipe_color(prof.get("style_handle_color",   style_color))
@@ -2281,7 +2307,7 @@ class BridgeApp:
             return
 
         prefix       = _sanitize_no_tilde(data.get("prefix", ""), 16)
-        suffix       = _sanitize_no_tilde(data.get("suffix", ""), 16)
+        suffix       = _sanitize_no_tilde(data.get("suffix", ""), MRC_STYLE_SUFFIX_MAX_LEN)
         base_color   = _norm_pipe_color(data.get("color",        sess.get("style_color",  "07")))
         prefix_color = _norm_pipe_color(data.get("prefix_color", data.get("style_prefix_color", base_color)))
         handle_color = _norm_pipe_color(data.get("handle_color", data.get("style_handle_color", base_color)))
@@ -2451,19 +2477,32 @@ class BridgeApp:
         if not message:
             return
 
+        # MRC_MAX_MESSAGE_LEN is the typed-text budget; everything the
+        # bridge composes in front of the text (styled name, /me
+        # wrapper) and the client's typing color is carried on top of
+        # it, the same way umrc-client counts its own lines (see
+        # _umrc_display_prefix). Typed text, including any color codes
+        # typed inside it, counts in full.
         if self._is_action_body(message):
             body = message.lstrip()
             if body.startswith("* "):
                 action_text = body[2:].strip()
+                action_prefix = f"|15* |13{nick} "
                 suffix = "|07"
-                cap = max(1, MRC_MAX_MESSAGE_LEN - len(suffix))
                 chunks = [c + suffix for c in _split_long_message(
-                    action_text, cap=cap, repeat_prefix=f"|15* |13{nick} ")]
+                    action_text, cap=MRC_MAX_MESSAGE_LEN + len(action_prefix),
+                    repeat_prefix=action_prefix)]
             else:
                 chunks = [_truncate_wire_message(body)]
         else:
+            # Both ANetBBS clients start every chunk with the sender's
+            # typing color (e.g. "|14"); it belongs to the prefix, like
+            # the " |NN" text color at the end of umrc-client's prefix.
+            color = _leading_pipe_color(message)
+            prefix = f"{self._session_display_handle(sess)} {color}"
             chunks = _split_long_message(
-                message, repeat_prefix=f"{self._session_display_handle(sess)} ")
+                message[len(color):], cap=MRC_MAX_MESSAGE_LEN + len(prefix),
+                repeat_prefix=prefix) or [prefix]
 
         for chunk in chunks:
             pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, "", room, chunk)
@@ -2488,8 +2527,11 @@ class BridgeApp:
             await self._safe_send(ws, {"type": "error", "message": "Usage: /t <user> <message>"})
             return
 
+        # Typed-text budget with the DirectMsg wrapper carried on top --
+        # see _handle_send_message.
         prefix = _dm_wrapper_prefix(self._session_display_handle(sess))
-        for chunk in _split_long_message(message, repeat_prefix=prefix):
+        for chunk in _split_long_message(message, cap=MRC_MAX_MESSAGE_LEN + len(prefix),
+                                         repeat_prefix=prefix):
             pkt = MRCProtocol.create_message(nick, self.config["bridge_bbs"], room, to_user, "", chunk)
             await self._send_chat_packet(nick, pkt)
 

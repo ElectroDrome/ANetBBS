@@ -678,7 +678,7 @@
         </div>
         <div id="chat-panel" style="display:none;">
           <div class="input-group">
-            <input type="text" id="message-input"
+            <input type="text" id="message-input" maxlength="280"
               placeholder="Type a message, /command, or !helper..."
               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" 
               inputmode="text" />
@@ -818,7 +818,7 @@
           </div>
           <label for="style-suffix">Suffix</label>
           <div class="panel-row">
-            <input type="text" id="style-suffix" maxlength="16" placeholder="e.g. |12>" />
+            <input type="text" id="style-suffix" maxlength="32" placeholder="e.g. |12>" />
           </div>
           <label>Typing Color (local + optional outgoing)</label>
           <div class="panel-row"><select id="style-typing-color"></select></div>
@@ -1183,22 +1183,28 @@
     // Wire-limit overhead (received from server on 'joined' / 'style_updated')
     // -----------------------------------------------------------------------
     const MRC_MAX_LEN = 140;
+    // Longest line a user can send, matching umrc-client's 280-char
+    // input limit and the terminal client's MAX_CHAT_LINE_LEN. The
+    // message box's maxlength="280" stops typing and trims pastes at
+    // this length; doSend() checks it too, for text placed in the box
+    // another way (macros, tab-complete, history).
+    const MRC_MAX_LINE_LEN = 280;
     let _handleOverheadChars = 0;
     let _dmOverheadChars     = 0;
     // Same idea, for /me: the bridge wraps action text in its own fixed
     // "|15* |13{nick} ...|07" wrapper (not the user's own style -- see
-    // mrc/bridge/main.py's _session_action_overhead), which also eats
-    // into the 140-char budget. Real bug this closes: /me was checked
-    // against the bare MRC_MAX_LEN with zero reservation, so a long
-    // action within ~12+len(nick) chars of the limit passed this
-    // client-side check but still got its tail silently cut off by the
-    // bridge's own hard truncation -- the exact silent-truncation this
-    // whole overhead-reservation scheme exists to prevent for chat/DM.
+    // mrc/bridge/main.py's _session_action_overhead).
     let _actionOverheadChars = 0;
 
-    function _chatTypedLimit()   { return Math.max(10, MRC_MAX_LEN - _handleOverheadChars); }
-    function _dmTypedLimit()     { return Math.max(10, MRC_MAX_LEN - _dmOverheadChars); }
-    function _actionTypedLimit() { return Math.max(10, MRC_MAX_LEN - _actionOverheadChars); }
+    // MRC_MAX_LEN is the typed-text budget: the display handle, DM or
+    // /me wrapper the bridge prepends, and this client's typing color,
+    // travel on top of it -- the same way umrc-client counts its lines
+    // (see mrc/bridge/main.py's _handle_send_message). The overhead
+    // values above are still received from the bridge but no longer
+    // reduce the limit.
+    function _chatTypedLimit()   { return MRC_MAX_LEN; }
+    function _dmTypedLimit()     { return MRC_MAX_LEN; }
+    function _actionTypedLimit() { return MRC_MAX_LEN; }
 
     // Real feature-parity gap found 2026-09-22: the terminal MRC client
     // (and uMRC itself) silently auto-splits an over-limit line into
@@ -1919,6 +1925,13 @@
         }
       }
 
+      if (rawLine.length > MRC_MAX_LINE_LEN) {
+        // Left in the box so the user can shorten it.
+        addMessage('✗ Line is ' + rawLine.length + ' characters; the limit is ' +
+                   MRC_MAX_LINE_LEN + '. Shorten it and send again.', 'error');
+        return;
+      }
+
       const parsed = parseUserInput(rawLine);
       if (!parsed) return;
 
@@ -1966,8 +1979,11 @@
             c => client.sendDirectMessage(toUser, c));
           messageInput.value = ''; secureMode = null; return;
         }
+        // splitForWire counts repeatPrefix inside the cap, so add the
+        // typing color's length to keep the full typed-text budget.
+        const colorPrefix = outgoingColorPrefix();
         sendChunksSequentially(
-          splitForWire(parsed.value, _chatTypedLimit(), outgoingColorPrefix()),
+          splitForWire(parsed.value, _chatTypedLimit() + colorPrefix.length, colorPrefix),
           c => client.sendMessage(c));
         messageInput.value = ''; secureMode = null;
       }

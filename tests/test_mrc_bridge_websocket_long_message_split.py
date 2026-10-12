@@ -27,7 +27,10 @@ from unittest.mock import AsyncMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mrc.bridge.main import BridgeApp, MRCProtocol, MRC_CHAT_PACKET_SPACING  # noqa: E402
+from mrc.bridge.main import (  # noqa: E402
+    BridgeApp, MRCProtocol, MRC_CHAT_PACKET_SPACING, MRC_MAX_MESSAGE_LEN,
+    _dm_wrapper_prefix,
+)
 
 
 def _run(coro):
@@ -84,6 +87,8 @@ class WebSocketLongMessageSplitTests(unittest.TestCase):
         self.app.websockets[self.ws_id] = self.ws
         _run(self.app._handle_join_room(self.ws_id, {"handle": "Alice", "room": "lobby"}))
         self.app.mrc.send_packet.reset_mock()
+        self.handle = self.app._session_display_handle(
+            self.app.db.get_session(str(self.ws_id)))
 
     def test_long_room_broadcast_is_split_not_truncated(self):
         sentences = ' '.join(f"This is sentence {i}." for i in range(1, 15))
@@ -94,8 +99,11 @@ class WebSocketLongMessageSplitTests(unittest.TestCase):
 
         sent = _sent_messages(self.app.mrc)
         self.assertGreater(len(sent), 1, "a 280-char message must split into more than one packet")
+        prefix = self.handle + " "
         for m in sent:
-            self.assertLessEqual(len(m["message"]), 140)
+            # The display handle travels on top of the typed-text budget.
+            self.assertTrue(m["message"].startswith(prefix))
+            self.assertLessEqual(len(m["message"]) - len(prefix), MRC_MAX_MESSAGE_LEN)
 
         reassembled = re.sub(r'\(\d+/\d+\)\s*', '', ' '.join(m["message"] for m in sent))
         for word in long_text.split(' '):
@@ -119,8 +127,10 @@ class WebSocketLongMessageSplitTests(unittest.TestCase):
 
         sent = [m for m in _sent_messages(self.app.mrc) if m["to_user"] == "NightOwl"]
         self.assertGreater(len(sent), 1)
+        prefix = _dm_wrapper_prefix(self.handle)
         for m in sent:
-            self.assertLessEqual(len(m["message"]), 140)
+            self.assertTrue(m["message"].startswith(prefix))
+            self.assertLessEqual(len(m["message"]) - len(prefix), MRC_MAX_MESSAGE_LEN)
             self.assertEqual(m["to_room"], "")
 
         reassembled = re.sub(
@@ -136,10 +146,82 @@ class WebSocketLongMessageSplitTests(unittest.TestCase):
 
         sent = _sent_messages(self.app.mrc)
         self.assertGreater(len(sent), 1)
+        prefix = "|15* |13Alice "
         for m in sent:
-            self.assertLessEqual(len(m["message"]), 140)
-            self.assertTrue(m["message"].startswith("|15* |13"))
+            self.assertTrue(m["message"].startswith(prefix))
             self.assertTrue(m["message"].endswith("|07"))
+            self.assertLessEqual(len(m["message"]) - len(prefix) - len("|07"),
+                                 MRC_MAX_MESSAGE_LEN)
+
+
+class WebSocketTypedTextBudgetTests(unittest.TestCase):
+    """MRC_MAX_MESSAGE_LEN is the typed-text budget on the WebSocket
+    path too, matching umrc-client (umrc-client/main.c,
+    sendChatMessage()): the display handle, DM or /me wrapper, and the
+    client's leading typing color travel on top of it, while every
+    typed char -- color codes typed inside the text included -- counts.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.app = _make_bridge(self._tmp.name)
+        self.ws_id = 333
+        self.app.websockets[self.ws_id] = _FakeWs()
+        _run(self.app._handle_join_room(self.ws_id, {"handle": "Alice", "room": "lobby"}))
+        self.app.mrc.send_packet.reset_mock()
+        self.handle = self.app._session_display_handle(
+            self.app.db.get_session(str(self.ws_id)))
+
+    @staticmethod
+    def _text(n):
+        return ('abcd ' * 60)[:n - 1] + 'z'
+
+    def test_full_budget_room_message_is_one_packet(self):
+        text = self._text(MRC_MAX_MESSAGE_LEN)
+        _run(self.app._handle_send_message(self.ws_id, {"message": text}))
+        sent = _sent_messages(self.app.mrc)
+        self.assertEqual([m["message"] for m in sent], [f"{self.handle} {text}"])
+
+    def test_typing_color_rides_on_top_of_the_budget(self):
+        text = self._text(MRC_MAX_MESSAGE_LEN)
+        _run(self.app._handle_send_message(self.ws_id, {"message": "|14" + text}))
+        sent = _sent_messages(self.app.mrc)
+        self.assertEqual([m["message"] for m in sent], [f"{self.handle} |14{text}"])
+
+    def test_over_budget_room_message_repeats_handle_and_color(self):
+        text = self._text(MRC_MAX_MESSAGE_LEN + 1)
+        _run(self.app._handle_send_message(self.ws_id, {"message": "|14" + text}))
+        sent = _sent_messages(self.app.mrc)
+        self.assertGreater(len(sent), 1)
+        prefix = f"{self.handle} |14"
+        for m in sent:
+            self.assertTrue(m["message"].startswith(prefix))
+            self.assertLessEqual(len(m["message"]) - len(prefix), MRC_MAX_MESSAGE_LEN)
+
+    def test_color_codes_typed_inside_the_text_count(self):
+        # 28 x "|12ab" = 140 typed chars, 84 of them color codes. Only
+        # the client's single leading typing color ("|14") is free.
+        text = "|12ab" * 28
+        _run(self.app._handle_send_message(self.ws_id, {"message": "|14" + text}))
+        self.assertEqual(len(_sent_messages(self.app.mrc)), 1)
+        self.app.mrc.send_packet.reset_mock()
+        _run(self.app._handle_send_message(self.ws_id, {"message": "|14" + text + "c"}))
+        self.assertGreater(len(_sent_messages(self.app.mrc)), 1)
+
+    def test_full_budget_direct_message_is_one_packet(self):
+        text = self._text(MRC_MAX_MESSAGE_LEN)
+        _run(self.app._handle_direct_message(
+            self.ws_id, {"to_user": "Bob", "message": text}))
+        sent = [m for m in _sent_messages(self.app.mrc) if m["to_user"] == "Bob"]
+        self.assertEqual([m["message"] for m in sent],
+                         [_dm_wrapper_prefix(self.handle) + text])
+
+    def test_full_budget_action_is_one_packet(self):
+        text = self._text(MRC_MAX_MESSAGE_LEN)
+        _run(self.app._handle_send_message(self.ws_id, {"message": f"* {text}"}))
+        sent = _sent_messages(self.app.mrc)
+        self.assertEqual([m["message"] for m in sent], [f"|15* |13Alice {text}|07"])
 
 
 class WebSocketChatPacingTests(unittest.TestCase):

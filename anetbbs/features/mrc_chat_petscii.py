@@ -73,7 +73,7 @@ found live on the Pi:
      reused here) -- the plain-mode fallback just never needed it
      before.
 """
-from .mrc_chat import MRCChat, _word_wrap, MAX_CHAT_INPUT_LEN
+from .mrc_chat import MRCChat, _word_wrap, MAX_CHAT_LINE_LEN
 
 
 class PetsciiMRCChat(MRCChat):
@@ -154,11 +154,13 @@ class PetsciiMRCChat(MRCChat):
 
             c = decode_char(ch[0])
             # Same cap/reasoning as MRCChat._read_chat_line() -- see
-            # mrc_chat.py's MAX_CHAT_INPUT_LEN comment. This override
-            # reads straight off the raw reader too, so it needs the
-            # same bound.
-            if len(buf) < MAX_CHAT_INPUT_LEN:
-                buf.append(c)
+            # mrc_chat.py's MAX_CHAT_INPUT_LEN and MAX_CHAT_LINE_LEN
+            # comments. This override reads straight off the raw reader
+            # too, so it needs the same bound. Input past the line limit
+            # is ignored and not echoed.
+            if len(buf) >= MAX_CHAT_LINE_LEN:
+                continue
+            buf.append(c)
             echo = '*' if self._should_mask(''.join(buf)) else c
             async with self._input_lock:
                 await self.session.write(echo)

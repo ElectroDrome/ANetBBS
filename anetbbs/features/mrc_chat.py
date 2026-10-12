@@ -48,7 +48,7 @@ from ..core.protocols import SessionProtocol
 # mrc/ is a sibling top-level package to anetbbs/ (both under the repo
 # root), not a submodule of it -- see mrc/mystic_client/theme_layout.py's
 # own module docstring for the .ini/.ans coordinate format this parses.
-from mrc.mystic_client.theme_layout import load_theme_layout, extract_art_segment, best_fit_mode
+from mrc.mystic_client.theme_layout import load_theme_layout, extract_art_segment, best_fit_mode, art_char_at
 
 
 MAX_OUTGOING_CHARS = 140        # MRC hub hard limit
@@ -70,6 +70,11 @@ MAX_OUTGOING_CHARS = 140        # MRC hub hard limit
 # raising, so the loop keeps making forward progress exactly like
 # read_line() does.
 MAX_CHAT_INPUT_LEN = 2048
+# Longest input line a user can type or paste, matching umrc-client's
+# 280-char input limit. Smaller than MAX_CHAT_INPUT_LEN above, so it
+# also bounds the raw buffer; input past it is ignored and not echoed.
+# A full line still splits into at most three wire chunks.
+MAX_CHAT_LINE_LEN = 280
 # Literal prefix the bridge's _normalize_server_cmd/_handle_server_cmd
 # path sends verbatim as Field7 for a broadcast ("BROADCAST {text}") --
 # fixed, not session-dependent, unlike handle/dm/action overhead which
@@ -1047,7 +1052,7 @@ class MRCChat(BaseChatSystem):
         # Real per-room user count -- data ANetBBS already tracks
         # (self._known_users), unlike the hub-wide stats above.
         _place('CHATTERS', str(len(self._known_users)))
-        _place('BUFFER', str(self._input_remaining_chars()))
+        self._mystic_place_buffer(layout, out)
         # Capped at 99 (not just left to _place()'s own length-based
         # truncation) -- the bundled themes' MENTIONS field is 2 chars
         # wide, and truncating "100" to "10" would silently understate
@@ -1139,16 +1144,14 @@ class MRCChat(BaseChatSystem):
         # different cap since the bridge prepends a different wrapper
         # before its hard 140-char cutoff -- see _chat_wire_cap/
         # _dm_wire_cap/_action_wire_cap).
+        # Shown as remaining/limit -- see _buffer_countdown.
         typed = len(self._input_buf)
         if typed > 0:
-            remaining = self._input_remaining_chars()
-            if remaining < 0:
-                cc = f'\x1b[1;91m{remaining}\x1b[0m'   # red: over limit
-            elif remaining <= 15:
-                cc = f'\x1b[1;93m{remaining}\x1b[0m'   # yellow: close
-            else:
-                cc = f'\x1b[1;36m{remaining}\x1b[0m'     # cyan: fine
-            right_bits.append(cc)
+            first, second, level, second_red = self._buffer_countdown()
+            first_sgr = {'red': '1;91', 'yellow': '1;93'}.get(level, '1;36')
+            second_sgr = '1;91' if second_red else '1;36'
+            right_bits.append(f'\x1b[{first_sgr}m{first:03d}\x1b[0m/'
+                              f'\x1b[{second_sgr}m{second:03d}\x1b[0m')
         # Replaces the status bar's old clock widget (Jerry: per-message
         # timestamps already show the time on every line, so a second
         # clock at the top was redundant -- latency is the thing that
@@ -2324,9 +2327,13 @@ class MRCChat(BaseChatSystem):
                 if self._scroll_offset:
                     self._scroll_offset = 0
                     await self._redraw_chat_area()
+                # The typing color is carried on top of the typed-text
+                # budget (see _chat_wire_cap), so add its length to the
+                # cap -- _split_for_wire counts repeat_prefix inside it.
+                color = self._current_color_pipe()
                 for i, chunk in enumerate(_split_for_wire(
-                        line, cap=self._chat_wire_cap(),
-                        repeat_prefix=self._current_color_pipe())):
+                        line, cap=self._chat_wire_cap() + len(color),
+                        repeat_prefix=color)):
                     if i:
                         await asyncio.sleep(WIRE_CHUNK_DELAY)
                     await self._send_json({
@@ -2418,7 +2425,7 @@ class MRCChat(BaseChatSystem):
                     c = '?'
 
                 async with self._input_lock:
-                    if len(self._input_buf) < MAX_CHAT_INPUT_LEN:
+                    if len(self._input_buf) < MAX_CHAT_LINE_LEN:
                         self._input_buf.append(c)
                     await self._draw_input_line()
                     await self._draw_status_line()
@@ -2528,6 +2535,7 @@ class MRCChat(BaseChatSystem):
             del self._input_buf[start:]
             for c in full + suffix:
                 self._input_buf.append(c)
+            del self._input_buf[MAX_CHAT_LINE_LEN:]
             await self._draw_input_line()
             return
         if len(common) > len(prefix):
@@ -2535,6 +2543,7 @@ class MRCChat(BaseChatSystem):
             del self._input_buf[start:]
             for c in common:
                 self._input_buf.append(c)
+            del self._input_buf[MAX_CHAT_LINE_LEN:]
             await self._draw_input_line()
             return
         # Multiple candidates, none of which share more in common than
@@ -2596,6 +2605,67 @@ class MRCChat(BaseChatSystem):
         self._input_buf = list(self._input_history[self._history_pos])
         await self._draw_input_line()
 
+    def _buffer_countdown(self) -> tuple:
+        """Input countdown for the status displays ("chatty mod"):
+        (first, second, level, second_red).
+
+        Up to 140 typed: first counts down what's left of the 140-char
+        typed-text budget and second is 140. Past 140 (the line will go
+        out in pieces): first counts down what's left of the 280-char
+        line limit and second is 280, shown in red. level colors the
+        first number: 'yellow' at 20 or fewer left, 'red' at 5 or
+        fewer, else 'normal' -- the same thresholds umrc-client uses
+        for its counter (umrc-client/main.c, updateBuffer()), which
+        counts up instead."""
+        remaining = self._input_remaining_chars()
+        if remaining >= 0:
+            first, second, second_red = remaining, MAX_OUTGOING_CHARS, False
+        else:
+            first = max(0, MAX_CHAT_LINE_LEN - len(self._input_buf))
+            second, second_red = MAX_CHAT_LINE_LEN, True
+        if first <= 5:
+            level = 'red'
+        elif first <= 20:
+            level = 'yellow'
+        else:
+            level = 'normal'
+        return first, second, level, second_red
+
+    def _mystic_place_buffer(self, layout, out: list) -> None:
+        """Write the BUFFER countdown at the Mystic theme's element.
+        Every bundled theme's art has "/" and three more cells right
+        after the element ("000/000"), so the limit goes there too
+        (see _buffer_countdown). A theme without that "/" gets one
+        number: what's left of the 280-char line limit."""
+        el = layout.element('BUFFER')
+        if not el:
+            return
+        x, y, length = el[0], el[1], el[2]
+        if length <= 0:
+            return
+        normal = self._mystic_color_sgr(el[3])
+        has_limit = self._mystic_buffer_has_limit_slot(layout, x + length, y)
+        if has_limit:
+            first, second, level, second_red = self._buffer_countdown()
+        else:
+            first = max(0, MAX_CHAT_LINE_LEN - len(self._input_buf))
+            level = 'red' if first <= 5 else ('yellow' if first <= 20 else 'normal')
+        first_sgr = {'red': '1;91', 'yellow': '1;93'}.get(level, normal)
+        text = f'{first:0{length}d}'[-length:]
+        out.append(f'\x1b[{y};{x}H\x1b[{first_sgr}m{text}\x1b[0m')
+        if has_limit:
+            second_sgr = '1;91' if second_red else normal
+            out.append(f'\x1b[{y};{x + length + 1}H\x1b[{second_sgr}m{second:03d}\x1b[0m')
+
+    def _mystic_buffer_has_limit_slot(self, layout, x: int, y: int) -> bool:
+        """True if the theme's art has "/" at (x, y). Cached per layout,
+        since the status line redraws on every keystroke."""
+        cache = getattr(self, '_buffer_slot_cache', None)
+        if cache is None or cache[0] is not layout:
+            cache = (layout, art_char_at(layout, x, y) == '/')
+            self._buffer_slot_cache = cache
+        return cache[1]
+
     def _current_color_ansi(self) -> str:
         return f'\x1b[{_PIPE_COLORS.get(_COLOR_SEQ[self._color_idx], "37")}m'
 
@@ -2603,18 +2673,22 @@ class MRCChat(BaseChatSystem):
         return f'|{_COLOR_SEQ[self._color_idx]}'
 
     def _chat_wire_cap(self) -> int:
-        """Max chars per outgoing room-chat chunk, leaving room for the
-        display handle the bridge prepends before its hard 140-char cutoff."""
-        return max(10, MAX_OUTGOING_CHARS - self._handle_overhead)
+        """Max typed chars per outgoing room-chat chunk. The display
+        handle the bridge prepends (and this client's own typing color)
+        travel on top of the 140-char typed-text budget, the same way
+        umrc-client counts its lines -- see mrc/bridge/main.py's
+        _handle_send_message."""
+        return MAX_OUTGOING_CHARS
 
     def _dm_wire_cap(self) -> int:
-        """Same as _chat_wire_cap() but for /t DMs (different wrapper prefix)."""
-        return max(10, MAX_OUTGOING_CHARS - self._dm_overhead)
+        """Same as _chat_wire_cap() but for /t DMs (the bridge's
+        DirectMsg wrapper also travels on top of the budget)."""
+        return MAX_OUTGOING_CHARS
 
     def _action_wire_cap(self) -> int:
-        """Same as _chat_wire_cap() but for /me actions (different, fixed-
-        color wrapper prefix -- see _session_action_overhead in the bridge)."""
-        return max(10, MAX_OUTGOING_CHARS - self._action_overhead)
+        """Same as _chat_wire_cap() but for /me actions (the bridge's
+        fixed-color action wrapper also travels on top of the budget)."""
+        return MAX_OUTGOING_CHARS
 
     def _input_remaining_chars(self) -> int:
         """Chars still available in the current input line's wire budget
@@ -2929,12 +3003,10 @@ class MRCChat(BaseChatSystem):
             if not rest:
                 await self._emit('Usage: /me <action>')
                 return True
-            # cap=self._action_wire_cap(), not the bare 140 -- the bridge
-            # replaces this "* " marker with its own fixed-color wrapper
-            # ("|15* |13{nick} ...|07") before this ever hits the wire,
-            # which costs more than 2 chars. Uncapped, any action within
-            # ~12+len(nick) chars of the limit had its tail silently
-            # dropped server-side with no warning.
+            # The bridge replaces this "* " marker with its own
+            # fixed-color wrapper ("|15* |13{nick} ...|07"), which it
+            # carries on top of the 140-char typed-text budget -- see
+            # _action_wire_cap.
             for i, chunk in enumerate(_split_for_wire(rest, cap=self._action_wire_cap())):
                 if i:
                     await asyncio.sleep(WIRE_CHUNK_DELAY)
@@ -3035,7 +3107,7 @@ class MRCChat(BaseChatSystem):
                     '',
                     '\x1b[1m/set <field> <value>\x1b[0m   (also: /set list)',
                     '  prefix <text>       nick prefix decoration (max 16 chars)',
-                    '  suffix <text>       nick suffix decoration (max 16 chars)',
+                    '  suffix <text>       nick suffix decoration (max 32 chars)',
                     '  color <00-15>       nick color (pipe code)',
                     '  entermsg <text>     shown on chat entry; {handle} placeholder',
                     '  leavemsg <text>     shown on chat leave; {handle} placeholder',
@@ -3078,7 +3150,11 @@ class MRCChat(BaseChatSystem):
                 if not value:
                     await self._emit(f'Usage: /set {field} <text>')
                     return True
-                await self._send_json(self._style_payload(**{field: value[:16]}))
+                # Suffix matches umrc-client's 32-char chatterNameSuffix;
+                # prefix stays at 16 (see the bridge's
+                # MRC_STYLE_SUFFIX_MAX_LEN).
+                max_len = 32 if field == 'suffix' else 16
+                await self._send_json(self._style_payload(**{field: value[:max_len]}))
                 return True
 
             if field == 'color':
