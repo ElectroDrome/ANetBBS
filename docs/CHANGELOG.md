@@ -1,11 +1,17 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.36`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.37`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.37 — MRC: uMRC prefix budget, per-sender chat pacing, /b broadcast fix, and the same budget parity for ANetBBS's own clients (October 2026)
+
+Two outside contributions (github.com/anetonline/ANetBBS/pull/22 and pull/23) refine the MRC bridge's and clients' handling of message-length limits. The bridge now recognizes uMRC's own client-embedded styled display-name prefix and treats it as overhead on top of the 140-character wire cap rather than counting it against the typed-text budget, matching the real `umrc-bridge` daemon's behavior. It also adds per-sender pacing between outgoing chat packets to avoid flooding the upstream hub, and fixes a bug where a uMRC `/b` network-wide broadcast was incorrectly narrowed to the sender's current room.
+
+A follow-up extends the same rule to ANetBBS's own terminal and web MRC clients, so every MRC surface counts a line the same way: the styled display name, DM wrapper, or `/me` action wrapper (and the client's own typing color) now ride on top of the 140-character typed-text budget instead of being subtracted from it. The style suffix now holds up to 32 characters and an input line up to 280 characters on every client, matching umrc-client. The terminal counter now shows remaining/limit, switching from a plain /140 to a red /280 once a line will be split across multiple packets — a fix for a real display bug where the old countdown could run negative and get clipped by the Mystic themes' fixed-width Buffer field.
 
 ## v1.1.36 — DOOM/Duke3D follow-up #3: connect-src needed blob: too, plus getting ahead of the pattern (October 2026)
 
