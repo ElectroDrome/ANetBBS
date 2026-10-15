@@ -864,6 +864,7 @@ class BBSSession:
         must not confuse this with bare-Enter (both used to look like '')."""
         if prompt:
             await self.write(prompt)
+        self._spy_flush()
         while True:
             try:
                 ch = await self._read_byte_maybe_spinning(1, allow_afk=True)
@@ -944,6 +945,7 @@ class BBSSession:
         CSI sequences (PgUp = ESC [ 5 ~, PgDn = ESC [ 6 ~, etc.) are read
         byte-by-byte until the VT final byte (0x40–0x7E) so they are never
         fragmented by a partial stream.read() return."""
+        self._spy_flush()
         while True:
             try:
                 ch = await self._read_byte_maybe_spinning(1, allow_afk=True)
@@ -1569,7 +1571,7 @@ class BBSSession:
         if not text:
             return
         try:
-            from ..features.ansi_html import _run_vt, cells_to_html
+            from ..features.ansi_html import _run_vt
             cells, max_row, new_state = _run_vt(text, state=self._spy_vt_state)
             self._spy_vt_state = new_state
             if max_row < 0:
@@ -1579,7 +1581,51 @@ class BBSSession:
             if last is not None and (now - last).total_seconds() < self._SPY_PERSIST_MIN_INTERVAL:
                 return
             self._spy_last_persist = now
-            self._heartbeat_node(screen=cells_to_html(cells, max_row))
+            self._persist_spy_screen(cells, max_row)
+        except Exception:
+            pass
+
+    def _persist_spy_screen(self, cells, max_row):
+        from ..features.ansi_html import cells_to_html
+        self._heartbeat_node(screen=cells_to_html(cells, max_row))
+
+    def _spy_flush(self):
+        """Force-persist the shadow screen RIGHT NOW, bypassing
+        _SPY_PERSIST_MIN_INTERVAL -- call this immediately before the
+        session blocks waiting for input (read_key/read_key_arrow/
+        read_line), the moment a screen has actually settled.
+
+        Real live bug this fixes: a screen is normally drawn as a tight
+        burst of several write() calls in a row (clear, banner, N
+        content lines, prompt) with no real delay between them -- all
+        well under _SPY_PERSIST_MIN_INTERVAL of each other. Only the
+        first call in that burst that happens to clear the throttle
+        window actually persists; every later call in the SAME burst
+        (often the one with the most complete, final content) gets
+        throttled away. If the next screen's burst ALSO starts soon
+        enough after that one lone persist, its own calls can ALSO all
+        fall inside the throttle window -- nothing from that whole
+        screen ever reaches the database, and the session then blocks
+        waiting for input with NOTHING further triggering a re-check,
+        so NodeSpy's mirror sits frozen on an old, already-replaced
+        screen indefinitely (confirmed live: SyncTerm at the main menu,
+        NodeSpy still showing the previous Who's Online screen, with no
+        change no matter how long the admin waited). Flushing here
+        bypasses the throttle unconditionally, so whatever the shadow
+        VT state currently holds -- which always reflects the most
+        recently written content, throttled or not -- gets persisted
+        at the one moment that actually matters: right before the user
+        starts looking at it.
+        """
+        if self._spy_vt_state is None:
+            return
+        try:
+            cells = self._spy_vt_state.get('cells') or {}
+            max_row = max((r for r, _ in cells), default=-1)
+            if max_row < 0:
+                return
+            self._spy_last_persist = datetime.utcnow()
+            self._persist_spy_screen(cells, max_row)
         except Exception:
             pass
 
@@ -1721,7 +1767,13 @@ class BBSSession:
                 self.writer.write(up)
                 self.writer.write(frame.encode('latin-1'))
                 await self._drain_protected()
-                self._spy_tee(up_text + frame)
+                # frame is latin-1 mojibake of the original CP437 bytes
+                # (same convention _show_ansi_screen's body uses) --
+                # re-decode as cp437 to recover the real Unicode glyphs
+                # a browser's monospace font needs for the NodeSpy
+                # mirror, same as _show_ansi_screen's 'enhanced' branch
+                # already does for the identical reason.
+                self._spy_tee(up_text + frame.encode('latin-1').decode('cp437', errors='replace'))
                 await asyncio.sleep(_ANIM_FRAME_DELAY)
         except Exception:
             pass
@@ -1916,7 +1968,13 @@ class BBSSession:
                     else:
                         self.writer.write(data)
                         await self._drain_protected()
-                    self._spy_tee(data.decode('latin-1'))
+                    # data is the real raw CP437 bytes (recovered via
+                    # the latin-1 encode above) -- decode as cp437, not
+                    # latin-1, to recover the true Unicode glyphs a
+                    # browser's monospace font needs for the NodeSpy
+                    # mirror (same reasoning as the 'enhanced' branch
+                    # above, which already does this correctly).
+                    self._spy_tee(data.decode('cp437', errors='replace'))
                 except UnicodeEncodeError:
                     await self.write(text)
 
@@ -2942,6 +3000,7 @@ class BBSSession:
         _enhanced = self.term_mode == 'enhanced' and self._enhanced_menu_active
         if prompt and not _enhanced:
             await self.write(prompt)
+        self._spy_flush()
 
         line = bytearray()
         while True:

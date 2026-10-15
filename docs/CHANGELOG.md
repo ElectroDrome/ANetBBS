@@ -1,11 +1,52 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.39`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.40`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.40 — NodeSpy live screen mirror: same-day fixes from real live testing (October 2026)
+
+Three real bugs found by actually using the brand-new NodeSpy live
+screen mirror (v1.1.39) on a live BBS, fixed the same day:
+
+- **The mirror could get stuck on an old screen indefinitely.** A
+  screen is normally drawn as a burst of several write() calls in a
+  row (clear, banner, content, prompt) with essentially no delay
+  between them — all well inside the mirror's own DB-write throttle.
+  Only the first call in a burst that happened to clear the throttle
+  actually persisted; the rest of that same burst, often the most
+  complete version of the screen, got throttled away. If the NEXT
+  screen's burst also started soon enough afterward, its calls could
+  ALSO all land inside the throttle window — leaving the mirror frozen
+  on a screen the user had already moved past, with nothing left to
+  trigger a re-check once the session settled down waiting for the
+  next keypress. Fixed by forcing an immediate, unthrottled flush of
+  the current screen right before the session blocks waiting for
+  input — the moment a screen has actually settled and the throttle
+  no longer needs to protect anything.
+- **A sysop-authored custom ANSI menu screen never reached the mirror
+  at all** — a real, separate bypass in the main menu renderer (and
+  the shared helper several other built-in screens use) wrote
+  directly to the raw connection to preserve exact CP437 byte
+  fidelity, skipping the normal code path the mirror hooks into
+  entirely. Since most real BBS main menus have custom ANSI art, this
+  made the previous bug worse in practice — the mirror could stay
+  stuck through an entire menu screen with no trace of it ever having
+  been shown. Both bypasses now feed the mirror too.
+- **Box-drawing and block characters rendered wrong (misaligned,
+  wrong glyphs) in the web mirror**, traced to a decode mismatch:
+  sysop-authored ANSI art is stored as raw CP437 bytes, which need
+  CP437 decoding to show their real box-drawing glyphs in a browser;
+  two of the mirror's capture points were using the wrong decode,
+  producing unrelated accented-letter mojibake instead of lines and
+  corners.
+
+Also made the mirror itself easier to read — larger text, and the
+terminal view now sizes to its actual content instead of floating in
+empty space to one side.
 
 ## v1.1.39 — SSH hardening, and a live NodeSpy screen mirror (October 2026)
 

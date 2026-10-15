@@ -672,12 +672,17 @@ def nodespy_screen_json(slot):
            .filter(NodeActivity.last_seen >= cutoff)
            .first())
     if row is None or not row.last_screen:
-        return jsonify({'ok': False})
-    return jsonify({
-        'ok': True,
-        'html': row.last_screen,
-        'last_seen': (row.last_seen.isoformat() + 'Z') if row.last_seen else '',
-    })
+        resp = jsonify({'ok': False})
+    else:
+        resp = jsonify({
+            'ok': True,
+            'html': row.last_screen,
+            'last_seen': (row.last_seen.isoformat() + 'Z') if row.last_seen else '',
+        })
+    # Defensive, not a confirmed cause: this is polled every second and
+    # must never be served stale by a browser or intermediate cache.
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @control_bp.route('/nodespy/<int:slot>/kick', methods=['POST'])

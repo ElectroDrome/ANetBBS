@@ -20,9 +20,10 @@
     <div class="card-header"><i class="bi bi-tv"></i> Live screen mirror
         <span class="text-muted small ms-2" id="spy-screen-updated"></span>
     </div>
-    <pre id="spy-screen-pre" style="background:#000;color:#aaa;padding:10px;margin:0;
+    <pre id="spy-screen-pre" style="background:#000;color:#aaa;padding:16px;margin:0;
                 font-family: 'Cascadia Mono','Consolas','Courier New',monospace;
-                font-size:14px; line-height:1.15; white-space:pre; overflow:auto;">{{ node.last_screen | safe }}</pre>
+                font-size:18px; line-height:1.25; white-space:pre; overflow:auto;
+                width:fit-content; max-width:100%; min-width:min(100%, 68ch);">{{ node.last_screen | safe }}</pre>
 </div>
 <script>
 (function () {
@@ -30,7 +31,7 @@
     var slot = {{ node.slot }};
     var url = {{ url_for('control.nodespy_screen_json', slot=node.slot) | tojson }};
     function poll() {
-        fetch(url, {credentials: 'same-origin'})
+        fetch(url, {credentials: 'same-origin', cache: 'no-store'})
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data || !data.ok) { return; }

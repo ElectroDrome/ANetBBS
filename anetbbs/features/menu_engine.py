@@ -1081,9 +1081,24 @@ async def run_menu(session, start='main'):
                     # session.write() re-encodes strings as CP437, which corrupts
                     # content decoded from latin-1: e.g. U+00DC (from byte 0xDC ▄)
                     # re-encodes to CP437 byte 0x9A (Ü) — wrong glyph on terminal.
+                    #
+                    # This bypasses session.write() entirely, so it also
+                    # bypassed the NodeSpy live screen mirror -- a real
+                    # live bug report: a custom ANSI menu screen (exactly
+                    # this path, since most real BBS main menus have one)
+                    # never reached the mirror at all, leaving it stuck
+                    # showing whatever the PREVIOUS screen was,
+                    # indefinitely, since nothing ever told it this
+                    # screen replaced it. Tee the same content a real
+                    # CP437 terminal would see, cp437-decoded (not
+                    # latin-1) to recover real Unicode glyphs for the
+                    # browser-rendered mirror -- same convention
+                    # _show_ansi_screen's own 'enhanced' branch uses.
                     try:
                         session.writer.write(rendered.encode('latin-1'))
-                        await session.writer.drain()
+                        await session._drain_protected()
+                        session._spy_tee(
+                            rendered.encode('latin-1').decode('cp437', errors='replace'))
                     except (UnicodeEncodeError, AttributeError):
                         await session.write(rendered)
                 await session.write("\r\n")

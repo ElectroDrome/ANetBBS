@@ -184,7 +184,21 @@ async def write_menu_art(session, slot: str) -> bool:
             version=getattr(_anetbbs_pkg, '__version__', 'v1.0a'),
         )
         session.writer.write(b'\x1b[2J\x1b[H' + body.encode('latin-1'))
+        _spy_text = body.encode('latin-1').decode('cp437', errors='replace')
     except Exception:
         session.writer.write(b'\x1b[2J\x1b[H' + ansi)
+        _spy_text = ansi.decode('cp437', errors='replace')
     await session._drain_protected()
+    # Same class of bug as menu_engine.py's identical custom-ANSI-art
+    # bypass: this writes raw bytes straight to session.writer,
+    # skipping session.write() entirely, so the NodeSpy live screen
+    # mirror never saw any screen that went through this (very widely
+    # used, see every bbs_ui.py feature header) helper. cp437-decoded
+    # (not latin-1) for the same reason _show_ansi_screen's 'enhanced'
+    # branch already does this -- real Unicode glyphs for the
+    # browser-rendered mirror, not latin-1 mojibake.
+    try:
+        session._spy_tee(_spy_text)
+    except Exception:
+        pass
     return True
