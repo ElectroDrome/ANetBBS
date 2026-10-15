@@ -8,8 +8,8 @@ admin — changes made here take effect the same way a web admin change
 would (immediately for DB-backed settings; after a service restart for
 `.env` settings, exactly like the web admin's own Settings page says).
 
-It is **not** a superset of the web admin. Sixteen sections cover most
-of the day-to-day surface (message areas, echomail, files, users,
+It is **not** a superset of the web admin. Seventeen sections cover
+most of the day-to-day surface (message areas, echomail, files, users,
 games, menus, events, and more), but anything that needs a rich
 canvas (the ANSI art/theme editor), a file upload, or a genuinely
 dangerous multi-step flow (backup *restore*, in-place upgrades, the
@@ -99,7 +99,7 @@ A blank value on a "nullable" field (shown as `(none)`) means
 "unset," not the empty string — that distinction matters for a few
 fields (e.g. a file area's `Min Upload Level` blank vs. `0`).
 
-## The 16 sections
+## The 17 sections
 
 ### Boards & Message Areas
 Local message boards: name, description, category, sort order, read/write
@@ -188,7 +188,7 @@ UIs.
 ### BBS Menus
 Two-level, like Echomail: pick a menu (name, title, prompt, default
 flag, minimum access), drill into its items (hotkey, label, action
-type, action args, minimum access, sort order, visible flag). All 18
+type, action args, minimum access, sort order, visible flag). All 54
 action types are covered. **Web admin only:** the raw ANSI art banner
 shown above the menu prompt (same reasoning as the Boards section's
 gap — needs the art editor).
@@ -237,6 +237,15 @@ flow already lives. A backup created by an older `update.sh` version
 may also be root-owned on disk; deleting one of those here will fail
 with a clear message pointing you at the web admin's privileged-helper
 fallback instead.
+
+### Translations
+CRUD over `MenuTranslation` rows — the `(language, key) → text`
+overrides both the terminal menu engine and the web UI's `t()` Jinja
+global read (see [17 — Development](17-development.md)'s "Translating
+a web template string" section). Language code, key, and translated
+text, one row per override. Mirrors the web admin's own Translations
+page (Admin → Settings → Translations) field-for-field — same table,
+same rules, just a curses front end instead of a browser.
 
 ### System / Network Settings
 The odd one out — not database-backed at all, this is a grouped editor

@@ -1,11 +1,49 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.40`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.41`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.41 — Full audit pass: hardening, dependency updates, and a documentation/wiki accuracy sweep (October 2026)
+
+A broad self-directed audit covering security, dependency currency,
+and documentation accuracy end to end — every numbered doc, the
+built-in wiki, and the top-level project files. Generic summary below,
+deliberately not itemized by specific issue, per this project's
+standing policy for anything security-adjacent.
+
+**Hardening:** a sweep of every connection-handling code path across
+the terminal dial-out gateway, external door-game bridges, file
+transfer, and the MRC bridge closed several gaps in timeout handling
+and input bounds that could leave a session or service hung or, in
+one case, a data file corrupted under concurrent writes. A couple of
+sysop-only code paths that build file paths from configurable text
+fields were also tightened as defense in depth. None of these were
+reachable by an ordinary user doing ordinary things — fixed anyway,
+each with its own regression test.
+
+**Dependencies:** several package floors in `requirements.txt` were
+bumped to current patched versions, the base image used for one
+optional build stage was updated off an end-of-life release, a pair
+of long-dead, unused dependencies left over from a removed feature
+were deleted outright, and packaging metadata now states the real
+minimum Python version this project has always required.
+
+**Documentation and wiki:** every file under `docs/`, the BBS's own
+built-in wiki content, and `README.md` were checked claim-by-claim
+against the current codebase — feature counts, config defaults, file
+paths, and cross-references that had quietly drifted out of date as
+the project grew (achievement badges, scheduled-event handlers, theme
+counts, menu action types, and a handful of others) are now accurate
+again, along with a changelog entry from a few releases back that had
+gotten merged into the wrong section.
+
+**Also fixed:** a web settings-save button (IRC client configuration)
+that silently failed for every user — unrelated to the audit's
+security scope, just found along the way.
 
 ## v1.1.40 — NodeSpy live screen mirror: same-day fixes from real live testing (October 2026)
 
@@ -125,7 +163,21 @@ CSP from the rest of the site) rather than loosened anywhere else —
 confirmed by a new test that the site-wide default policy never gets
 it.
 
-A real sysop report ("DOOM and Duke Nukem 3D no longer work") traced, via the browser's own console output, to a single missing origin in the dos-frame page's Content-Security-Policy: every directive (`script-src`, `worker-src`, `connect-src`, `img-src`) allowed the EmulatorJS CDN except `style-src`, so the emulator's own stylesheet load was silently blocked. That cascaded into EmulatorJS's "minified files missing" fallback path, which then crashed outright — breaking both games completely, with nothing visible in server-side logs at all (a pure client-side CSP block never reaches Flask's access log, which is exactly why this went unnoticed for a while). Fixed by adding the CDN to `style-src` too, with a new regression test checking every directive generically rather than just the one that broke this time.
+## v1.1.33 — Fix in-browser DOOM/Duke3D: a CSP directive was missing the emulator's own CDN (October 2026)
+
+A real sysop report ("DOOM and Duke Nukem 3D no longer work") traced,
+via the browser's own console output, to a single missing origin in
+the dos-frame page's Content-Security-Policy: every directive
+(`script-src`, `worker-src`, `connect-src`, `img-src`) allowed the
+EmulatorJS CDN except `style-src`, so the emulator's own stylesheet
+load was silently blocked. That cascaded into EmulatorJS's "minified
+files missing" fallback path, which then crashed outright — breaking
+both games completely, with nothing visible in server-side logs at
+all (a pure client-side CSP block never reaches Flask's access log,
+which is exactly why this went unnoticed for a while). Fixed by
+adding the CDN to `style-src` too, with a new regression test checking
+every directive generically rather than just the one that broke this
+time.
 
 ## v1.1.32 — Login alert vs. doors; Command Deck top/bottom account menu (October 2026)
 

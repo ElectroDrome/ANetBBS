@@ -76,6 +76,10 @@ only. Never let regular users edit menu items.
 
 - Hotkey **2** → exec `curl -s wttr.in/?A0Tn0` (named "Weather")
 - Hotkey **1** → ansi `welcome` (replay the welcome banner)
+- Hotkey **3** → exec `anet-gallery.sh` (named "Image Gallery") —
+  only added if install.sh/update.sh actually placed that script at
+  the install root; skipped silently on an install that predates it
+  and hasn't been through `update.sh` yet
 
 Use these to confirm `exec` and `ansi` work on your install before
 rolling out custom doors.

@@ -88,11 +88,17 @@ each get isolated dirs — never coordinate by writing to
 
 ### Writing a Synchronet JS door
 
-The compat shim is at `anetbbs/games/sbbs_stubs/`. ~270 functions/objects
-covering `bbs.*`, `console.*`, `system.*`, `user.*`, `File`, `load()`,
-`require()`, `dd_lightbar_menu`, `mouse_getkey`. If you write a door
-that uses only those APIs, it'll run on our shim **without needing
-Synchronet installed**.
+The compat shim's implementation is `anetbbs/games/synchronet_compat.py`
+(it generates the actual Node.js wrapper a door runs against);
+`anetbbs/games/sbbs_stubs/` is just the ~187 vendored third-party `.js`
+library files the shim `load()`s on demand, not the shim itself. The
+shim implements ~151 fields covering `bbs.*`, `console.*`, `system.*`,
+`user.*`, `File`, `load()`, `require()`, `dd_lightbar_menu`,
+`mouse_getkey` — partial coverage of real Synchronet's own ~270-field
+surface across those same objects; see
+[15 — Synchronet compat](15-synchronet-compat.md) for the exact
+per-object breakdown. If you write a door that uses only the covered
+APIs, it'll run on our shim **without needing Synchronet installed**.
 
 Example minimal door (`hello.js`):
 

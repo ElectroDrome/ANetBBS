@@ -95,9 +95,15 @@ class RloginServer:
             logger.info('rlogin session started for %s (login as %r)',
                        addr, header.get('server_user'))
 
-            # Send the acknowledgement NUL byte
+            # Send the acknowledgement NUL byte. Timeout-wrapped for
+            # consistency with the rest of this handshake, even though
+            # a single byte essentially never blocks on a fresh
+            # connection's socket buffer -- found/flagged in a
+            # follow-up audit sweep of every raw drain() call site in
+            # the codebase. Caught by the same except asyncio.
+            # TimeoutError below as the handshake read already is.
             writer.write(b'\x00')
-            await writer.drain()
+            await asyncio.wait_for(writer.drain(), timeout=_HANDSHAKE_TIMEOUT_SEC)
 
             # The handshake's server_user is who the client wants to log in as;
             # client_user doubles as a password guess for a game-server-style

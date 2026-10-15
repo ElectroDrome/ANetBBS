@@ -210,6 +210,10 @@ in plumbing. Below is the full feature inventory.
 - [[ebooks|Ebook Reader]] — search and read free public-domain books
   (Project Gutenberg, via the Gutendex API) in the web or terminal UI
 - This wiki (`/wiki/`)
+- **Ask Anet** — an in-BBS help guru (`/guru/`) that full-text
+  searches this wiki for your question (SQLite FTS5, no external or
+  local AI model involved) instead of making you go find the right
+  page yourself
 
 ## Sysop tools
 
@@ -227,6 +231,9 @@ in plumbing. Below is the full feature inventory.
 - [[Themes]] — switch the dark theme palette per-user or globally
 - [[Backup]] — sqlite dump + asset archive
 - [[Tutorial]] — sysop onboarding walkthrough
+- Auto-social-posting queue — drafts posts to Bluesky/Mastodon from
+  BBS activity, held for sysop review-and-approve before anything
+  actually ships (**Admin → Social**)
 """),
 
     # ------------------------------------------------------------------
@@ -1482,7 +1489,7 @@ go check every page yourself.
 
 ## For sysops — admin-review notifications
 
-Every `is_admin=True` user additionally gets notified about five
+Every `is_admin=True` user additionally gets notified about six
 things that need a sysop's review, so nobody has to manually check
 each admin page for new work:
 
@@ -1500,11 +1507,14 @@ each admin page for new work:
   not once per message. See [[Echomail]].
 - **Network join applications** — someone submitted the public
   "apply to join this network" form. See [[ANotherNetwork]].
+- **Social post queued for review** — the auto-social-posting feature
+  (Bluesky/Mastodon) queued a post that needs a sysop's go/no-go
+  before it ships. See **Admin → Social**.
 
 ## Preferences
 
 `/notifications/settings` lets you turn any kind off individually —
-default is on for everything. The five admin-review kinds only show
+default is on for everything. The six admin-review kinds only show
 up on this page for admin accounts; a regular user's settings page
 never shows toggles for notifications they could never receive.
 
@@ -1836,6 +1846,10 @@ several themes plus a custom-theme editor.
 | `paper-white` | Light theme for daytime use |
 | `enhanced` | "VOID SIGNAL" — triple neon (green/cyan/magenta) on black, scanlines, glitch effects |
 | `hackers` | "HACKERS (1995)" — neon violet/lime/cyan cyberpunk homage |
+| `graphite-teal` | Neutral graphite dark with a single refined teal accent, built for long reading sessions |
+| `ivory-editorial` | Warm cream daytime theme, deep forest-teal accent, serif headlines |
+| `retro-web` | "Retro Web '99" — tiled pinstripe background, beveled Win95 chrome, Times New Roman |
+| `command-deck` | Fixed icon-rail app shell (not a top navbar) — mission-control blue + amber, real mobile drawer/tab-bar support |
 
 ## Per-user
 
@@ -1858,9 +1872,9 @@ is just a set of CSS variables — `--theme-bg`, `--theme-primary`,
 ## Light themes
 
 ANetBBS is dark-by-default — every list-group, table-row tint, and
-alert palette is hand-tuned for dark backgrounds. `paper-white` is the
-one shipped light theme; building another light theme requires
-overriding the same "dark" assumptions in base.html.
+alert palette is hand-tuned for dark backgrounds. `paper-white` and
+`ivory-editorial` are the two shipped light themes; building another
+one requires overriding the same "dark" assumptions in base.html.
 
 ## Terminal menu art
 
@@ -1906,11 +1920,12 @@ shows the lot.
 - If you run the network hub: peek at the hatch/hold queue under
   Hub Management (see below) — a backlog there means outbound files
   or messages aren't reaching peers.
-- Check the notification bell: it flags five things that need a
+- Check the notification bell: it flags six things that need a
   sysop's review — MSP federation join requests, QWK node
   applications, users pending NUV approval, unknown/bad echomail
-  areas, and network join applications. Each admin can toggle these
-  independently at `/notifications/settings` (admin-only toggles).
+  areas, network join applications, and social posts queued for
+  review. Each admin can toggle these independently at
+  `/notifications/settings` (admin-only toggles).
 
 ## Weekly
 
@@ -1980,12 +1995,13 @@ to the built-in Phase 1 menu unchanged.
 
 `/admin/events/` lets a sysop automate routine maintenance instead
 of doing it by hand, each on its own daily/hourly/weekly/interval
-schedule (times are UTC). Ten built-in handlers ship: a `noop` test
-handler, log rotation, a security-update check, SQLite `VACUUM`,
-TradeWars 2002 daily maintenance, generating the ANotherNetwork
-nodelist, an arbitrary shell command, and three InterBBS inbound-sync
-handlers (Wall, Last Callers, Game Scores) that auto-appear when
-those features are turned on. Worth a look if you're tired of
+schedule (times are UTC). Sixteen built-in handlers ship: a `noop`
+test handler, log rotation, a security-update check, SQLite `VACUUM`,
+TradeWars 2002 daily maintenance, four stale-row cleanup handlers,
+JAM message base export, generating the ANotherNetwork nodelist, an
+arbitrary shell command, and four InterBBS inbound-sync handlers
+(Wall, Last Callers, Game Scores, fsxNet IBOL/IBLC) that auto-appear
+when those features are turned on. Worth a look if you're tired of
 remembering to do the **Monthly** items above yourself. Full handler
 table and worked examples: [[Scheduled Events]].
 
@@ -2499,7 +2515,7 @@ Quick links to:
 - [[Files|Files Admin]]
 - [[Themes|Theme manager]]
 - [[Backup]]
-- [[Notifications|Notification Settings]] — turn off any of the five
+- [[Notifications|Notification Settings]] — turn off any of the six
   admin-review notification kinds you don't want (they're all on by
   default)
 - [[Scheduled Events]] — cron-style maintenance jobs (nodelist
@@ -2767,17 +2783,25 @@ hours" slot.
 | `db_vacuum` | SQLite VACUUM | none | Reclaims free pages, defragments, refreshes planner stats. Skips (returns ok) on non-SQLite backends — Postgres autovacuums itself. |
 | `log_rotate` | Rotate large logs | `max_mb` (default 50) | Any `logs/*.log` over the threshold is renamed to `.1` and a fresh empty file takes its place. |
 | `security_check` | Security update check | none | Scans `apt list --upgradable` and the venv's `pip list --outdated`, tags Ubuntu `-security` rows, writes a report consumed by **Admin → Security**. Always returns ok even on a non-Ubuntu box, so a missing `apt` doesn't permanently red-flag the row. |
+| `cleanup_stale_sessions` | Clean up stale online-presence rows | `stale_days` (default 1) | Deletes `UserSession` rows untouched for `stale_days` — catches connections that never got a clean disconnect (dropped carrier, killed process). |
+| `cleanup_stale_game_sessions` | Clean up stale game-center node slots | `timeout_seconds` (default 3600) | Closes `GameSession` rows stuck at `status='active'` and releases their node slot, for a door-game process that crashed/was killed without a clean exit. |
+| `cleanup_stale_registry_entries` | Federation registry: clean up unverified entries | `stale_days` (default 3) | Deletes `RegistryEntry` rows that never completed email verification within `stale_days`. A fast no-op on any install that isn't `REGISTRY_MODE_ENABLED`. |
+| `cleanup_stale_presence_events` | Clean up old login/logout alert events | `stale_minutes` (default 60) | Deletes `PresenceEvent` rows (the real-time "X just logged in/out" delivery queue) older than `stale_minutes`. Meant to stay small and short-lived, unlike the other cleanup handlers. |
+| `export_jam_message_bases` | Export echo areas to JAM message base format | `output_dir` (default `DATA_DIR/jam_export`) | Regenerates a real `.jhr`/`.jdt`/`.jdx` JAM message base for every echo area with JAM export enabled, so classic JAM-API door games can read it. Read-only snapshot, rebuilt from scratch every run. |
 | `hub_generate_nodelist` | ANotherNetwork: generate nodelist | none | Publishes the ANotherNetwork nodelist into the `ANN.FILES.NODELIST` file area, replacing the prior copy. Only meaningful on the install designated as the ANotherNetwork hub (`REGISTRY_MODE_ENABLED`) — elsewhere it still runs harmlessly, publishing a nodelist with just the hub entry. |
 | `sync_wall_inbound` | InterBBS Wall: import inbound posts | none | Materializes new inbound InterBBS Wall echomail into local Wall posts. Auto-created when InterBBS Wall is enabled — you won't add this by hand. |
 | `sync_lastcallers_inbound` | InterBBS Last Callers: import inbound entries | none | Materializes new inbound echomail into local Last Callers entries. Auto-created when InterBBS Last Callers sharing is enabled. |
 | `sync_scores_inbound` | InterBBS Game Scores: import inbound scores | none | Materializes new inbound echomail into local game high scores. Auto-created when InterBBS Score Sharing is enabled. |
+| `sync_fsxnet_inbound` | fsxNet IBOL/IBLC: import inbound data | none | Materializes new `FSX_DAT` echomail into local Oneliners/Last Callers. Auto-created when fsxNet IBOL or IBLC is enabled. |
 | `shell` | Shell command | `command` (required), `timeout` (default 60s) | Runs an arbitrary command as the service user. **No sudo** — anything needing root privileges silently fails at that step. Output is captured as raw bytes and decoded with `errors='replace'`, so non-UTF8 output (e.g. CP437 from a DOS program) doesn't crash the handler. |
 
-The three `sync_*_inbound` handlers aren't something you'd pick from a
-blank slate — they appear already-created and enabled the moment you
-turn on the matching InterBBS feature (Wall, Last Callers, or Game
-Score sharing) on a network. Listed here so they aren't a mystery if
-you spot one.
+Sixteen handlers ship in total. The four `sync_*_inbound` handlers
+aren't something you'd pick from a blank slate — they appear
+already-created and enabled the moment you turn on the matching
+InterBBS feature (Wall, Last Callers, Game Score sharing, or fsxNet
+IBOL/IBLC) on a network. The four `cleanup_stale_*` handlers are
+auto-seeded on every install too, not just fresh ones. Listed here so
+none of them are a mystery if you spot one.
 
 ### `shell` handler — worked example
 
@@ -2811,12 +2835,19 @@ that already have a row):
 | Name | Schedule | Handler |
 |---|---|---|
 | TW2 daily maintenance | Daily 03:30 UTC | `tw2_maint` |
+| Daily security update check | Daily 04:00 UTC | `security_check` |
 | Weekly SQLite VACUUM | Weekly, Sunday 04:15 UTC | `db_vacuum` |
 | Rotate oversize logs | Daily 04:45 UTC | `log_rotate` (`max_mb: 50`) |
-| Daily security update check | Daily 04:00 UTC | `security_check` |
+| Clean up stale online-presence rows | Daily 05:00 UTC | `cleanup_stale_sessions` (`stale_days: 1`) |
+| Clean up stale game-center node slots | Daily 05:15 UTC | `cleanup_stale_game_sessions` (`timeout_seconds: 3600`) |
+| Federation registry: clean up unverified entries | Daily 05:30 UTC | `cleanup_stale_registry_entries` (`stale_days: 3`) |
+| Clean up old login/logout alert events | Every 15 min | `cleanup_stale_presence_events` (`stale_minutes: 60`) |
 
 Any of these can be disabled, deleted, or rescheduled — they're
-normal rows, not special-cased.
+normal rows, not special-cased. The four `cleanup_stale_*` events are
+auto-seeded on every install, not just fresh ones — each only inserts
+if its own handler key isn't already present, so an existing install
+picks up a newly-added cleanup job on its next app start.
 
 On installs with `REGISTRY_MODE_ENABLED=true` (the designated
 ANotherNetwork hub), a fifth event is also seeded:
@@ -2902,11 +2933,11 @@ anetbbs-rebuilt/
     features/       BBS sub-systems (menus, doors, multinode, ANSI helpers...)
     web/            Flask blueprints (one per feature)
     wiki/           wiki renderer + slug + seed
-    models.py       SQLAlchemy models (one file, ~3000 lines)
+    models.py       SQLAlchemy models (one file, ~4250 lines)
     web_app.py      Flask app factory
     config.py       env-driven config
-  templates/        Jinja templates
-  static/           images, css overrides
+    templates/      Jinja templates
+    static/         images, css overrides
   data/             SQLite + uploads (runtime; gitignored)
   docs/             markdown docs served at /docs/
   deploy/           systemd units, sudoers, gallery viewer script

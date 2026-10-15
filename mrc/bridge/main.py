@@ -95,6 +95,17 @@ MRC_CHAT_PACKET_SPACING = 0.6
 # an opt-in to 0.0.0.0 for remote umrc-client connections, at which
 # point an uncapped buffer here would be a remote memory DoS.
 MRC_TCP_MAX_LINE_BYTES = 8192
+# Found missing in a follow-up audit: unlike anetbbs/ftp/server.py
+# (max_cons=256, max_cons_per_ip=8), this listener tracked every
+# accepted connection in self.mrc_tcp_clients with no ceiling at all --
+# before a single byte of the MRC handshake is even read. Same
+# loopback-by-default/opt-in-to-0.0.0.0 caveat as MRC_TCP_MAX_LINE_
+# BYTES above: once a sysop opts into remote umrc-client access, a
+# single remote host opening many concurrent connections (no auth gate
+# before the connection is counted) had no sysop-configurable ceiling
+# to fall back on. Mirrors the FTP server's own convention/values.
+MRC_TCP_MAX_CONNECTIONS = 256
+MRC_TCP_MAX_CONNECTIONS_PER_IP = 8
 
 
 def _find_config_path(explicit: Optional[str] = None) -> str:
@@ -2919,10 +2930,37 @@ class BridgeApp:
         the outbound encoding (_send_mrc_tcp_payload, not
         ws.send_json) differ. Only started at all if mrc_tcp_enabled is
         set in config.json -- see start_background_tasks."""
+        peer = writer.get_extra_info("peername")
+        remote_ip = peer[0] if peer else ""
+
+        # Connection-count caps -- found missing in a follow-up audit,
+        # see MRC_TCP_MAX_CONNECTIONS's own comment. Rejected BEFORE
+        # the connection is added to any tracking dict, before a
+        # single byte of the MRC handshake is read.
+        if len(self.mrc_tcp_clients) >= MRC_TCP_MAX_CONNECTIONS:
+            logger.warning(
+                f"MRC TCP connection from {remote_ip} refused: at the "
+                f"global cap ({MRC_TCP_MAX_CONNECTIONS})")
+            try:
+                writer.close()
+            except Exception:
+                pass
+            return
+        if remote_ip:
+            per_ip = sum(1 for ip in self._mrc_tcp_remote_ip.values() if ip == remote_ip)
+            if per_ip >= MRC_TCP_MAX_CONNECTIONS_PER_IP:
+                logger.warning(
+                    f"MRC TCP connection from {remote_ip} refused: at the "
+                    f"per-IP cap ({MRC_TCP_MAX_CONNECTIONS_PER_IP})")
+                try:
+                    writer.close()
+                except Exception:
+                    pass
+                return
+
         conn_id = id(writer)
         self.mrc_tcp_clients[conn_id] = writer
-        peer = writer.get_extra_info("peername")
-        self._mrc_tcp_remote_ip[conn_id] = (peer[0] if peer else "")
+        self._mrc_tcp_remote_ip[conn_id] = remote_ip
         logger.info(f"MRC TCP client connected: {conn_id} ({self._mrc_tcp_remote_ip[conn_id]})")
 
         buf = b""

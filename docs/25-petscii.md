@@ -59,12 +59,17 @@ rendering code. Covered:
   catalog that has a PETSCII-safe implementation
   (`features/games.py`'s `GameManager.play_number_guess()`, reused
   directly rather than reimplemented)
+- **MRC chat** (`PetsciiMRCChat`, `features/mrc_chat_petscii.py`) —
+  plain-text Inter-BBS chat, hotkey `8` on the Phase 1 menu, reusing
+  the same network connection and message flow as the ANSI MRC
+  client, just rendered without any cursor addressing/color
 - **Logoff**
 
 Deliberately absent (not shown, not marked "unavailable," just not
-offered): door games, ANetCRAFT, DOOM/Duke3D, MRC chat, IRC — none of
-those have a plain-text-only path, same reasoning that already
-excludes Wall/ANSI-art screens from PETSCII sessions.
+offered): door games, ANetCRAFT, DOOM/Duke3D, IRC — none of those have
+a plain-text-only path, same reasoning that already excludes
+Wall/ANSI-art screens from PETSCII sessions. MRC chat is the one
+exception — see above.
 
 ## Text rendering rules
 
@@ -111,6 +116,7 @@ silently missing on this side; a dedicated `PetsciiMenu`/
   | `who` | Who's online |
   | `profile` | View own profile |
   | `games` | Number Guessing |
+  | `mrc` | MRC chat (plain-text) |
   | `logoff` | End the session |
 
 - Admin routes: list (`/`), create (`/new`), edit (`/<id>/edit`),

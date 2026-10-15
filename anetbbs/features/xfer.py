@@ -171,7 +171,14 @@ async def _negotiate_binary(session, enable: bool):
                      _IAC, _DONT, _OPT_BINARY])
     try:
         session.writer.write(seq)
-        await session.writer.drain()
+        # Routed through session._drain_protected() (timeout-wrapped),
+        # not a raw session.writer.drain() -- found missing in a
+        # follow-up audit across all 3 drain() call sites in this
+        # file. Bounded by the existing 300s proc-wait timeout at the
+        # bottom of send_file()/recv_file() either way, but a hung
+        # drain() here previously stalled the transfer up to that full
+        # 5 minutes instead of ending promptly.
+        await session._drain_protected()
     except Exception:
         pass  # best-effort; the connection may already be gone
 
@@ -222,7 +229,7 @@ async def send_file(session, filepath: str, protocol: str = 'zmodem') -> bool:
                 if not chunk:
                     break
                 session.writer.write(_telnet_escape(chunk) if is_telnet else chunk)
-                await session.writer.drain()
+                await session._drain_protected()
         except Exception as exc:
             logger.debug("xfer send proc→session: %s", exc)
         finally:
@@ -362,7 +369,7 @@ async def recv_file(session, protocol: str = 'zmodem') -> list:
                 if not chunk:
                     break
                 session.writer.write(_telnet_escape(chunk) if is_telnet else chunk)
-                await session.writer.drain()
+                await session._drain_protected()
         except Exception as exc:
             logger.debug("xfer recv proc→session: %s", exc)
         finally:

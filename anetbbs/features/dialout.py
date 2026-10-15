@@ -10,11 +10,27 @@ Synchronet has the same idea — they call it 'dial-out' or 'gateway'.
 """
 import asyncio
 import logging
+import os
 
 from .ansi_ui import banner, footer, prompt as _prompt, FG, RESET, BOLD, write_menu_art
 
 
 logger = logging.getLogger(__name__)
+
+# Idle-read timeout for the REMOTE side of the dial-out bridge -- found
+# missing in a follow-up audit. Only applied to remote_reader.read()
+# (remote_to_user()), never to the user's own keystroke read
+# (user_to_remote()) -- a legitimately idle user just reading the
+# remote screen without typing is normal and must not be disconnected;
+# same asymmetry door_runner.py's rlogin/telnet door bridges already
+# use (idle_timeout on _output_pump() only, never _input_pump()). A
+# remote BBS that stalls (network blip, remote busy/hung, or one that
+# accepts the connection then simply never reads/writes without
+# closing the socket) used to freeze the session permanently, since
+# nothing ever unblocked remote_reader.read(). Same env var name
+# convention as door_runner.py's DOOR_IDLE_TIMEOUT, kept separate
+# since this is a different feature.
+DIALOUT_IDLE_TIMEOUT = int(os.environ.get('DIALOUT_IDLE_TIMEOUT', '300'))
 
 
 # Stock dial-out directory — minimal seed so the menu isn't empty on a fresh
@@ -243,6 +259,8 @@ class DialoutMenu:
         bytes and strip telnet protocol bytes from the remote-to-user
         direction so the user terminal doesn't see raw 0xff IACs.
         """
+        from ..core.session import WRITE_DRAIN_TIMEOUT_SECONDS
+
         IAC, DO, DONT, WILL, WONT = 255, 253, 254, 251, 252
         SB, SE = 250, 240
         OPT_BINARY, OPT_ECHO, OPT_SGA, OPT_TTYPE, OPT_NAWS = 0, 1, 3, 24, 31
@@ -250,6 +268,21 @@ class DialoutMenu:
 
         stop = asyncio.Event()
         in_escape = False  # closure-local via nonlocal in user_to_remote
+
+        async def _drain_remote():
+            """Timeout-protected drain() for the REMOTE side's writer --
+            found missing in a follow-up audit (asyncio's drain() has
+            no built-in timeout; a remote that stops reading without
+            closing the socket hung this forever). Raises
+            ConnectionError on timeout so every existing `except
+            (OSError, ConnectionError)` call site already handles it
+            correctly with no further changes needed there."""
+            try:
+                await asyncio.wait_for(remote_writer.drain(),
+                                       timeout=WRITE_DRAIN_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError as e:
+                raise ConnectionError('remote dial-out peer stopped '
+                                      'reading (drain timeout)') from e
 
         def _handle_option(cmd, opt):
             """Reply policy for IAC DO/DONT/WILL/WONT from the remote."""
@@ -290,7 +323,7 @@ class DialoutMenu:
             # NAWS to decide between 80- and 132-col layouts.
             remote_writer.write(
                 bytes([IAC, SB, OPT_NAWS, 0, 80, 0, 24, IAC, SE]))
-            await remote_writer.drain()
+            await _drain_remote()
         except (OSError, ConnectionError):
             return
 
@@ -302,7 +335,12 @@ class DialoutMenu:
             out = bytearray()
             try:
                 while not stop.is_set():
-                    chunk = await remote_reader.read(4096)
+                    try:
+                        chunk = await asyncio.wait_for(
+                            remote_reader.read(4096),
+                            timeout=DIALOUT_IDLE_TIMEOUT)
+                    except asyncio.TimeoutError:
+                        break
                     if not chunk:
                         break
                     out.clear()
@@ -331,7 +369,7 @@ class DialoutMenu:
                             if reply:
                                 try:
                                     remote_writer.write(reply)
-                                    await remote_writer.drain()
+                                    await _drain_remote()
                                 except (OSError, ConnectionError):
                                     return
                             state = 'data'
@@ -346,7 +384,7 @@ class DialoutMenu:
                                 if reply:
                                     try:
                                         remote_writer.write(reply)
-                                        await remote_writer.drain()
+                                        await _drain_remote()
                                     except (OSError, ConnectionError):
                                         return
                                 state = 'data'
@@ -359,7 +397,7 @@ class DialoutMenu:
                     if out:
                         try:
                             self.session.writer.write(bytes(out))
-                            await self.session.writer.drain()
+                            await self.session._drain_protected()
                         except (OSError, ConnectionError):
                             break
             except (OSError, ConnectionError):
@@ -403,7 +441,7 @@ class DialoutMenu:
                             remote_writer.write(bytes([IAC, IAC]))
                         else:
                             remote_writer.write(bytes([byte]))
-                        await remote_writer.drain()
+                        await _drain_remote()
                     except (OSError, ConnectionError):
                         break
             except (OSError, ConnectionError):

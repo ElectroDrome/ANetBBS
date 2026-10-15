@@ -1819,7 +1819,18 @@ class BBSSession:
         """
         try:
             import pathlib as _pl
+            import re as _re
             from ..features.bbs_ui import _app
+
+            # Same path-traversal-shaped pattern found in
+            # anetbbs/features/ansi_ui.py's load_menu_ansi() in a
+            # follow-up audit, same fix: slot can originate from a
+            # menu item's sysop-configured action_args (free text, via
+            # menu_engine.py's 'ansi' action), never validated against
+            # '..'/'/' before reaching the file-path joins below.
+            # Every real slot name is already identifier-like; this
+            # can't break a legitimate caller.
+            slot = _re.sub(r'[^A-Za-z0-9_-]', '', slot or '')
 
             mode = self.term_mode
             is_plain_text = False

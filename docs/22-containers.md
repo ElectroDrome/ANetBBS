@@ -284,15 +284,19 @@ host` instead, which sidesteps Docker's NAT entirely.
 ### Enabling native `umrc-client` support
 
 Off by default (matching `install.sh`'s own default-off posture). Set
-`"mrc_tcp_enabled": true` in `mrc-bridge-config.json`, **and** change
-`"mrc_tcp_listen_host"` from its default `"127.0.0.1"` to `"0.0.0.0"`
-— loopback-only means loopback *inside the container's own network
+`"mrc_tcp_enabled": true` in `mrc-bridge-config.json` — the shipped
+`docker/compose/mrc-bridge-config.json.example` already sets
+`"mrc_tcp_listen_host": "0.0.0.0"`, so you don't need to change that
+one yourself when starting from the example file. (It matters only if
+you've since edited it down to `"127.0.0.1"` for some other reason —
+loopback-only means loopback *inside the container's own network
 namespace*, which a published port can't reach at all, unlike on a
 bare-metal install where "loopback" and "this host" are the same
-thing. Then uncomment the `mrc-bridge` service's `5010:5010` `ports:`
-line in `docker-compose.yml`. See `docs/SECURITY.md` for what this
-listener's security posture actually is before opting in — it's brand
-new, less-reviewed surface than the rest of the bridge.
+thing — in which case set it back to `"0.0.0.0"` to make this work.)
+Then uncomment the `mrc-bridge` service's `5010:5010` `ports:` line in
+`docker-compose.yml`. See `docs/SECURITY.md` for what this listener's
+security posture actually is before opting in — it's brand new,
+less-reviewed surface than the rest of the bridge.
 
 ## The docker.sock trust boundary (read this before enabling)
 

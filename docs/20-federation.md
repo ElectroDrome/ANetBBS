@@ -362,8 +362,9 @@ else is affected.
 
 ## Limitations + future work
 
-- **No federation between multiple registries yet.** v1.0a3 ships one
-  hub model. Mirror-sync between registries is post-alpha (v1.0b).
+- **No federation between multiple registries yet.** This release
+  ships a single-hub model only — mirror-sync between two or more
+  independent registries isn't built.
 - **No public-key signing of heartbeats.** A `POST /heartbeat` now
   requires the per-entry `heartbeat_key` returned at register time
   (compared with `hmac.compare_digest`, never accepted from an entry

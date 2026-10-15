@@ -21,6 +21,26 @@ class BridgeDB:
         self._profiles = self._load_json(self.profiles_file) or {}
         self._sessions = self._load_json(self.sessions_file) or {}
 
+        # Found missing in a follow-up audit: every *_async() save/
+        # delete below offloads its actual file write to the default
+        # executor with NO synchronization at all -- two independent
+        # handlers (e.g. two different users each running /set style
+        # around the same moment) could both open the SAME
+        # profiles.json.tmp path concurrently, truncating/interleaving
+        # each other's bytes before whichever os.replace() runs last
+        # publishes the result. On the next bridge restart,
+        # _load_json() hits json.JSONDecodeError on the corrupted file
+        # and silently resets it to {} -- wiping every registered
+        # user's profile or every live session, bridge-wide, not just
+        # the colliding ones. One lock per file, held from snapshot
+        # through the executor write, serializes writes to each file
+        # in call order -- this also prevents a slower-but-OLDER
+        # snapshot's write from completing after a faster-but-NEWER
+        # one and silently reverting it (a lost-update race, not just
+        # a corruption one).
+        self._profiles_lock = asyncio.Lock()
+        self._sessions_lock = asyncio.Lock()
+
     def discard_stale_sessions(self):
         """Call this exactly once, right after constructing the
         BridgeDB a real bridge PROCESS will actually run with (see
@@ -109,9 +129,10 @@ class BridgeDB:
         for json.dump() (a real "dictionary changed size during
         iteration" hazard, not just a style preference)."""
         self._profiles[handle] = {**data, 'updated_at': datetime.utcnow().isoformat()}
-        snapshot = dict(self._profiles)
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._save_json, self.profiles_file, snapshot)
+        async with self._profiles_lock:
+            snapshot = dict(self._profiles)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._save_json, self.profiles_file, snapshot)
 
     def get_profile(self, handle: str) -> Optional[dict]:
         return self._profiles.get(handle)
@@ -127,9 +148,10 @@ class BridgeDB:
         docstring for the full rationale (identical shape, sessions.json
         instead of profiles.json)."""
         self._sessions[session_id] = {**data, 'updated_at': datetime.utcnow().isoformat()}
-        snapshot = dict(self._sessions)
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._save_json, self.sessions_file, snapshot)
+        async with self._sessions_lock:
+            snapshot = dict(self._sessions)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._save_json, self.sessions_file, snapshot)
 
     def get_session(self, session_id: str) -> Optional[dict]:
         return self._sessions.get(session_id)
@@ -146,9 +168,10 @@ class BridgeDB:
         docstring for the full rationale."""
         if session_id in self._sessions:
             del self._sessions[session_id]
-            snapshot = dict(self._sessions)
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._save_json, self.sessions_file, snapshot)
+            async with self._sessions_lock:
+                snapshot = dict(self._sessions)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, self._save_json, self.sessions_file, snapshot)
 
     def list_profiles(self) -> Dict[str, dict]:
         return self._profiles.copy()

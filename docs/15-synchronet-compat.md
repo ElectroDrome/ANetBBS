@@ -39,6 +39,12 @@ These door categories are confirmed running through the shim:
 
 † Enough for dorkit's `sbbs` mode.
 
+Summed across the five counted rows above (`console`/`bbs`/`system`/
+`user`/`js`): **~151 fields shimmed**, against real Synchronet's own
+**~270-ish** across those same objects — the "~270" figure that shows
+up elsewhere in these docs is the real-Synchronet target, not what
+this shim implements; don't read it as a coverage claim.
+
 ### Notable v287 additions for LORD
 
 - `Queue` — name-cached, drives dorkit input via `dk.console.input_queue_callback` on a single-threaded Node event loop

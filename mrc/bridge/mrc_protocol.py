@@ -231,9 +231,22 @@ class MRCProtocol:
         room = cls.norm_room(room)
         return cls.create_packet(user, bbs, room, 'SERVER', '', room, 'LOGOFF')
 
+    # Found missing in a follow-up audit: validate_handle() had no
+    # length cap at all, and any anonymous client (unregistered/casual
+    # handles are intentionally allowed to chat, matching the real MRC
+    # network -- see main.py's own comments near /identify) can get an
+    # arbitrarily long handle persisted permanently into profiles.json
+    # the first time it calls set_style/set_prefs, with no pruning.
+    # 32 matches this project's own existing MRC style-suffix cap
+    # (same "how long is a reasonable display-name-adjacent field"
+    # judgment call already made elsewhere in this codebase).
+    MAX_HANDLE_LENGTH = 32
+
     @classmethod
     def validate_handle(cls, handle: str) -> bool:
-        if not handle or handle.upper() in cls.RESERVED_HANDLES:
+        if not handle or len(handle) > cls.MAX_HANDLE_LENGTH:
+            return False
+        if handle.upper() in cls.RESERVED_HANDLES:
             return False
         for c in handle:
             if ord(c) not in cls.VALID_CHAR_RANGE:

@@ -1,6 +1,6 @@
 # ANetBBS
 
-**Status: stable** (`v1.1.40`, October 2026)
+**Status: stable** (`v1.1.41`, October 2026)
 
 A modern multi-node BBS for the classic FidoNet world. Web, telnet, SSH,
 rlogin, **FTP, and PETSCII (C64/128)** front-ends; FidoNet binkp + DOVE-Net
@@ -29,8 +29,8 @@ pick **test** mode at the prompt if you're behind NAT or just kicking
 the tires (web admin runs on `http://localhost:8080`).
 
 ```
-tar xzf ANetBBS-v1.1.40.tar.gz
-cd ANetBBS-v1.1.40
+tar xzf ANetBBS-v1.1.41.tar.gz
+cd ANetBBS-v1.1.41
 sudo bash install.sh
 ```
 
@@ -50,8 +50,8 @@ and run `update.sh` from inside it (backs up `.env`/database/systemd units
 first, then syncs files and restarts services):
 
 ```
-tar xzf ANetBBS-v1.1.40.tar.gz
-cd ANetBBS-v1.1.40
+tar xzf ANetBBS-v1.1.41.tar.gz
+cd ANetBBS-v1.1.41
 sudo bash update.sh
 ```
 
@@ -84,7 +84,7 @@ docker compose -f docker/compose/docker-compose.yml up -d
 ```
 
 `.env` already points at `ghcr.io/anetonline/anetbbs:latest` by
-default — pin a specific version instead with `ANETBBS_IMAGE_TAG=v1.1.40`
+default — pin a specific version instead with `ANETBBS_IMAGE_TAG=v1.1.41`
 (or whatever release you want). Testing a local change instead of a
 published image? `docker build -f docker/Dockerfile -t anetbbs:local .`,
 then set `ANETBBS_IMAGE=anetbbs` / `ANETBBS_IMAGE_TAG=local` in `.env`.
@@ -243,10 +243,13 @@ what each command actually does, and troubleshooting).
   platform. See [docs/30-postcards.md](docs/30-postcards.md).
 
 ### Achievements
-- 10 built-in badges (First Login, 30-Day Caller, First Post, Frequent
+- 18 built-in badges (First Login, 30-Day Caller, First Post, Frequent
   Poster, Centurion Poster, PM Sent, Echomail Hatchling, Netmail
-  Pioneer, Town Crier, Veteran) — checked and awarded automatically on
-  login, with a flash notice on new unlocks
+  Pioneer, Town Crier, Veteran, High Scorer, Game Explorer, Door
+  Diver, Wiki Editor, Wiki Scribe, File Uploader, Librarian, Town
+  Legend) — checked and awarded automatically on login (or the next
+  board post/PM/shoutbox post after qualifying), with a flash notice
+  on new unlocks
 - Shown on each user's Profile page and rolled up into a site-wide
   count on the public Stats page
 - Sysop-extensible — new rules are plain Python functions in

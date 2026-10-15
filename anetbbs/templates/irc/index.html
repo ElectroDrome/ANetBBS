@@ -524,8 +524,20 @@
         if (document.getElementById('cfg_ssl').checked) fd.append('use_ssl', '1');
         fd.append('nick', document.getElementById('cfg_nick').value);
         fd.append('channels', document.getElementById('cfg_channels').value);
-        const r = await fetch('{{ url_for("irc.save_settings") }}',
-            { method: 'POST', body: fd });
+        // Found in a follow-up audit: this fetch sent no CSRF token at
+        // all, and irc.save_settings() is NOT csrf-exempted -- so the
+        // app-wide CSRFProtect correctly rejected every save with a
+        // 400, silently breaking the "Save" button for real users
+        // (the opposite of a vulnerability, but still a real bug).
+        // Same meta[name=csrf-token] + X-CSRFToken header convention
+        // already used elsewhere in this codebase (e.g. admin/
+        // addons.html).
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const r = await fetch('{{ url_for("irc.save_settings") }}', {
+            method: 'POST',
+            headers: csrfMeta ? {'X-CSRFToken': csrfMeta.content} : {},
+            body: fd,
+        });
         addLine('(server)',
             r.ok ? '[Settings saved.]' : '[Save failed.]', 'system');
     });

@@ -37,8 +37,13 @@ def _read_requirements():
 
 setup(
     name="anetbbs",
-    version="1.1.40",
+    version="1.1.41",
     packages=find_packages(),
+    # Matches install.sh's own already-documented real floor (it probes
+    # for python3.12/3.11/3.10 in that order and accepts 3.10+) -- found
+    # missing in a follow-up audit, which let `pip install -e .` on an
+    # unsupported interpreter "succeed" and fail confusingly later.
+    python_requires=">=3.10",
     install_requires=_read_requirements(),
     entry_points={
         'console_scripts': [

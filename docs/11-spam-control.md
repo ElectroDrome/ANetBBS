@@ -71,6 +71,8 @@ their replacement (e.g. `****`). Applied at write-time on:
 - Board posts
 - PMs
 - Oneliners
+- Echomail composition
+- Netmail composition
 
 Filter is in-memory cached, but the cache is invalidated automatically
 on every add/toggle/delete — no manual reload step needed.

@@ -50,7 +50,13 @@ MarkupSafe>=3.0.0
 # Database
 SQLAlchemy>=2.0.0
 alembic>=1.13.0
-Mako>=1.3.0
+# 1.3.11 floor: CVE-2026-41205 (path traversal in TemplateLookup.
+# get_template(), fixed 1.3.11) -- found in a follow-up audit. Mako is
+# pulled in only as alembic's migration-template engine, which never
+# passes untrusted input to get_template() (it only renders its own
+# bundled migration scripts), so not currently exploitable here, but
+# bumped anyway since it costs nothing.
+Mako>=1.3.11
 greenlet>=3.0.0
 
 # WebSocket transport (Flask-SocketIO + eventlet worker for Gunicorn).
@@ -58,8 +64,16 @@ greenlet>=3.0.0
 # replacement (gevent + gevent-websocket 0.10.1) hangs websocket
 # upgrades against modern gevent. Pinned to eventlet until flask-socketio
 # offers a maintained gevent path.
-python-socketio>=5.10.0
-python-engineio>=4.10.0
+# 5.16.4 / 4.13.2 floors: CVE-2026-48804 (unbounded in-memory binary
+# EVENT/ACK accumulation, server-side DoS, python-socketio, fixed
+# 5.16.4) + CVE-2026-48802 (unbounded background-thread spawn from
+# heartbeat handling) and CVE-2026-48809 (no size check before
+# buffering an incoming message on the ASGI/aiohttp WebSocket path),
+# both python-engineio, fixed 4.13.2 -- found in a follow-up audit, all
+# three reachable by an unauthenticated remote client against the live
+# MRC/web Socket.IO endpoints.
+python-socketio>=5.16.4
+python-engineio>=4.13.2
 simple-websocket>=1.0.0
 # 0.40.3 floor: CVE-2025-58068, HTTP request smuggling via malformed
 # chunked-encoding trailers in eventlet's WSGI parser -- this is the
@@ -161,13 +175,13 @@ pyftpdlib>=2.0.0
 # it FTPS is silently disabled and AUTH TLS clients get refused on the
 # control channel. Required for the FTPS path that update.sh wires up
 # when FTP_TLS_CERTFILE is configured.
-pyopenssl>=24.0.0
-
-# Internet email — LMTP listener that takes mail handed off from the
-# sysop's local Postfix/Exim/OpenSMTPD, and an outbound submitter that
-# hands fresh mail back to the MTA at 127.0.0.1:25.
-aiosmtpd>=1.4.0
-aiosmtplib>=3.0.0
+# 26.0.0 floor: CVE-2026-27448 (unhandled exception in an SNI callback
+# leaves a connection accepted instead of rejected) + CVE-2026-27459
+# (buffer overflow via a DTLS cookie-generate callback -- pyftpdlib's
+# TLS_FTPHandler is plain TCP/TLS, not DTLS, so this one likely doesn't
+# apply in practice, but bumped anyway since it's free and this is a
+# directly network-facing listener) -- found in a follow-up audit.
+pyopenssl>=26.0.0
 
 # Service Control Center — per-PID CPU% + memory sampling for the
 # live graphs at /admin/control/. Reads /proc, no special privileges.
@@ -187,3 +201,12 @@ pyspellchecker>=0.8.0
 # a missing install degrades to a clear error on that one admin page
 # rather than breaking anything else.
 beautifulsoup4>=4.12.0
+# Explicit floor on beautifulsoup4's own selector-engine dependency --
+# found missing in a follow-up audit. CVE-2026-49477 (ReDoS) and
+# CVE-2026-49476 (unbounded-memory selector parsing), both fixed
+# 2.8.4. Low exploitability here (this app only runs beautifulsoup4
+# against one fixed, sysop-trusted page, never arbitrary attacker HTML
+# or selectors), but a pinned/offline/mirrored install shouldn't be
+# able to silently resolve a pre-fix wheel just because no floor was
+# ever stated.
+soupsieve>=2.8.4

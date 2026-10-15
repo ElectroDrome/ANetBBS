@@ -74,10 +74,11 @@ once.
   cross-links, per-page revision history/diff/revert, full-text
   search, 52 seeded reference pages. See the [README's Wiki
   section](../README.md#wiki) for the full feature list.
-- **Achievements** — 10 built-in badges awarded automatically on
-  login, shown on the Profile page and rolled up on the public Stats
-  page. See the [README's Achievements
-  section](../README.md#achievements).
+- **Achievements** — 18 built-in badges (login streaks, posting
+  milestones, Game Center high scores, door-game variety, wiki
+  edits, file uploads, and more) awarded automatically, shown on the
+  Profile page and rolled up on the public Stats page. See the
+  [README's Achievements section](../README.md#achievements).
 
 ## Where to go next
 
@@ -118,6 +119,8 @@ once.
 - [35 — The mods directory (customization that survives updates)](35-mods-directory.md)
 - [36 — Web ANSI editor (file browser, BIN/XBin/PCBoard/Renegade/Synchronet formats, TheDraw fonts)](36-ansi-editor.md)
 - [37 — Enhanced Client (optional add-on: browser Canvas+WebSocket terminal)](37-enhanced-client.md)
+- [38 — Add-ons (admin page for optional, not-in-the-stock-release pieces)](38-addons.md)
+- [39 — fsxNet IBOL/IBLC (real InterBBS Oneliners + Last Callers)](39-fsxnet-interbbs.md)
 
 ### Reference
 

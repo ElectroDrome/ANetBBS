@@ -74,6 +74,7 @@ Each item has:
 | `pm_send`   | —                                                 | compose new PM                                |
 | `imsg`      | —                                                 | Inter-BBS Instant Message (MSP) inbox         |
 | `imsg_send` | —                                                 | compose new Inter-BBS Instant Message         |
+| `bbs_directory` | —                                             | browse the BBS directory (scrollable lightbar list) |
 | `bulletins` | —                                                 | bulletins                                     |
 | `echo`      | —                                                 | echomail areas                                |
 | `echo_post` | —                                                 | compose echomail                              |
@@ -82,6 +83,8 @@ Each item has:
 | `multinode` | —                                                 | interactive multinode chat                    |
 | `oneliners` | —                                                 | last 10 callers + recent one-liners           |
 | `lastcallers` | —                                               | full, paginated Last Callers list             |
+| `fsxnet_ibol` | —                                               | fsxNet IBOL — InterBBS Oneliners wall (real wire-format FSX_DAT sync) |
+| `fsxnet_iblc` | —                                               | fsxNet IBLC — InterBBS Last Callers + BBS directory (real wire-format FSX_DAT sync) |
 | `chat`      | —                                                 | Chat Systems picker (goes to the `chat_systems` menu if it exists, else the built-in picker) |
 | `chat_local`| —                                                 | local multinode chat directly (for a `chat_systems` item) |
 | `chat_irc`  | —                                                 | IRC (A-Net IRC door) directly (for a `chat_systems` item) |
@@ -99,7 +102,7 @@ Each item has:
 | `edit_prof` | —                                                 | edit profile                                  |
 | `passwd`    | —                                                 | change password                               |
 | `sysop`     | —                                                 | Sysop Tools picker, admin only (goes to the `sysop_tools` menu if it exists, else the built-in picker) |
-| `sysop_users`, `sysop_boards`, `sysop_echomail`, `sysop_games`, `sysop_wall`, `sysop_file_queue`, `sysop_events`, `sysop_rss_admin`, `sysop_login_modules`, `sysop_notifications`, `sysop_registry`, `sysop_callers`, `sysop_node_monitor`, `sysop_status`, `sysop_cfg_tool` | — | one specific Sysop Tools category directly, admin only (for a `sysop_tools` item — see below) |
+| `sysop_users`, `sysop_boards`, `sysop_echomail`, `sysop_games`, `sysop_wall`, `sysop_file_queue`, `sysop_events`, `sysop_rss_admin`, `sysop_login_modules`, `sysop_notifications`, `sysop_registry`, `sysop_callers`, `sysop_node_monitor`, `sysop_status`, `sysop_cfg_tool`, `sysop_anetdraw` | — | one specific Sysop Tools category directly, admin only (for a `sysop_tools` item — see below) |
 | `logoff`    | —                                                 | end session                                   |
 
 ## A couple of action types in more detail
@@ -170,7 +173,7 @@ Concretely, this means a sysop can:
 
 Each of the leaf action types listed in the table above
 (`chat_local`/`chat_irc`/`chat_mrc`, `game_door_list`/
-`game_number_guess`, the fifteen `sysop_*` ones) is exactly what the
+`game_number_guess`, the sixteen `sysop_*` ones) is exactly what the
 corresponding stock option already did — they exist so a sysop's
 *edited* version of these three menus can still reach the same
 underlying functionality piece by piece, not just the bundled

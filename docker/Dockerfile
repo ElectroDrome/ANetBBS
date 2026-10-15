@@ -29,7 +29,12 @@ RUN pip install --no-cache-dir --prefix=/install -e . \
     && pip install --no-cache-dir --prefix=/install -r requirements-docker.txt
 
 # ── Stage 2: grab the docker CLI + compose plugin (self-upgrade path only) ──
-FROM docker:27-cli AS docker-cli
+# 29 floor: the 27 line went EOL May 2025 (no more security patches);
+# even the 28 line went EOL May 2026. 29.x is the currently maintained
+# major -- found in a follow-up audit. Re-check the current point
+# release periodically; this only affects the self-upgrade/Docker-
+# compose control panel feature's own CLI binaries, not the main app.
+FROM docker:29-cli AS docker-cli
 
 # ── Stage 3: runtime image ──────────────────────────────────────────────────
 FROM python:3.12-slim-bookworm AS runtime

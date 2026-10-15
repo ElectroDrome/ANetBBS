@@ -122,7 +122,24 @@ def load_menu_ansi(slot: str, mode: str = 'ansi'):
     first so a sysop override always wins, same precedence as
     session.py's own _show_ansi_screen().
     """
+    import re
     from pathlib import Path
+
+    # Path-traversal-shaped pattern found in a follow-up audit: slot is
+    # built elsewhere (games.py's _show_category_submenu()) as
+    # f'door_games_{category}' from Game.category, a free-text field a
+    # sysop can set via the web admin door-game editor -- never
+    # slugified/validated against '..'/'/' before reaching here. A
+    # sysop who set category to something like '../../../../etc/passwd'
+    # could get its bytes read and sent to a user's terminal as "art".
+    # Every real slot name in this codebase is already identifier-like
+    # (letters/digits/underscore/hyphen), so restricting to that
+    # character set can't break any legitimate caller while making a
+    # '..'/'/' segment simply not match any real file -- defense in
+    # depth; gated entirely behind sysop-level admin access already,
+    # not a privilege escalation on its own.
+    slot = re.sub(r'[^A-Za-z0-9_-]', '', slot or '')
+
     data_dir   = Path(__file__).resolve().parent.parent.parent / 'data'
     mods_dir   = data_dir / 'mods' / 'text' / 'menus'
     menus_dir  = data_dir / 'text' / 'menus'

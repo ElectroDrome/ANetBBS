@@ -147,7 +147,17 @@ async def _run_shell(session, params: dict) -> None:
             proc.communicate(), timeout=_SHELL_MODULE_TIMEOUT_SECONDS)
         if stdout:
             session.writer.write(stdout.replace(b'\n', b'\r\n'))
-            await session.writer.drain()
+            # Timeout-protected, not a raw session.writer.drain() --
+            # found missing in a follow-up audit. Runs on every login
+            # that uses a sysop-configured shell login module; a
+            # client whose socket stops accepting data while this
+            # module's output exceeds the buffer used to hang the
+            # login path here indefinitely. run_modules()'s own
+            # broad except Exception (see its caller) already treats
+            # any failure here as best-effort, so the CarrierLost this
+            # can now raise on a real timeout is handled the same way
+            # every other login-module failure already is.
+            await session._drain_protected()
     except asyncio.TimeoutError:
         logger.warning('login module shell cmd timed out: %s', cmd)
         # Real gap found in a security/performance audit: on timeout,

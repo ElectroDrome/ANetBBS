@@ -58,17 +58,20 @@ produce.
 | `cleanup_stale_game_sessions` | Clean up stale game-center node slots | `timeout_seconds` (default 3600) | Closes `GameSession` rows stuck at `status='active'` and releases their node slot, for a door-game process that crashed/was killed without a clean exit. |
 | `cleanup_stale_registry_entries` | Federation registry: clean up unverified entries | `stale_days` (default 3) | Deletes `RegistryEntry` rows that never completed email verification within `stale_days`. A fast no-op on any install that isn't `REGISTRY_MODE_ENABLED`. |
 | `cleanup_stale_presence_events` | Clean up old login/logout alert events | `stale_minutes` (default 60) | Deletes `PresenceEvent` rows (the real-time "X just logged in/out" delivery queue — see [33 — Presence alerts](33-presence-alerts.md)) older than `stale_minutes`. This table is meant to stay small and short-lived, unlike the other cleanup handlers above. |
+| `export_jam_message_bases` | Export echo areas to JAM message base format | `output_dir` (default `DATA_DIR/jam_export`) | Regenerates a real `.jhr`/`.jdt`/`.jdx` JAM message base for every echo area with JAM export enabled (**Admin → Echomail →** area settings), so classic JAM-API door games can read it. Read-only snapshot, rebuilt from scratch every run. |
 | `hub_generate_nodelist` | ANotherNetwork: generate nodelist | none | Publishes the ANotherNetwork nodelist into the `ANN.FILES.NODELIST` file area via `anetbbs.echomail.nodelist.write_nodelist_to_area()`, replacing the prior copy so peers can pull it like any other file-echo entry. Only meaningful on the install designated as the ANotherNetwork hub (`REGISTRY_MODE_ENABLED`) — on any other install it still runs harmlessly, just publishing a nodelist with only the hub entry and no downstream nodes. See [`20-federation.md`](20-federation.md) for the hub role this supports. |
 | `sync_wall_inbound` | InterBBS Wall: import inbound posts | none | Materializes new `ANET_WALL` echomail into local Wall posts. You won't add this by hand — it's auto-created when InterBBS Wall is enabled. |
 | `sync_lastcallers_inbound` | InterBBS Last Callers: import inbound entries | none | Materializes new `ANET_LASTCALLERS` echomail into local Last Callers entries. Auto-created when InterBBS Last Callers is enabled. |
 | `sync_scores_inbound` | InterBBS Game Scores: import inbound scores | none | Materializes new `ANET_GAMESCORES` echomail into local game high scores. Auto-created when InterBBS Score Sharing is enabled. |
+| `sync_fsxnet_inbound` | fsxNet IBOL/IBLC: import inbound data | none | Materializes new `FSX_DAT` echomail into local Oneliners/Last Callers. Auto-created when fsxNet IBOL or IBLC is enabled — see [39 — fsxNet InterBBS](39-fsxnet-interbbs.md). |
 | `shell` | Shell command | `command` (required), `timeout` (default 60s) | Runs an arbitrary command as the service user via `subprocess.run(..., shell=True)`. **No sudo** — anything needing root privileges will silently fail at that step. Output is captured as raw bytes and decoded with `errors='replace'`, so non-UTF8 output (e.g. CP437 from DOS programs) doesn't crash the handler — it just shows replacement characters in the log. |
 
-The three `sync_*_inbound` handlers above aren't something you'd pick
+The four `sync_*_inbound` handlers above aren't something you'd pick
 from a blank slate — they show up in the New/Edit Event dropdown
 already-created and enabled the moment you turn on the matching
-InterBBS feature (Wall, Last Callers, or Game Score sharing) on a
-network. Listed here so they aren't a mystery if you notice them.
+InterBBS feature (Wall, Last Callers, Game Score sharing, or fsxNet
+IBOL/IBLC) on a network. Listed here so they aren't a mystery if you
+notice them.
 
 ### `shell` handler — worked example
 

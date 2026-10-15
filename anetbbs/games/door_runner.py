@@ -2939,6 +2939,16 @@ async def play_rlogin_telnet(game, user, session, bbs_name='ANetBBS',
         await session.read_line("Press Enter...")
         return False
 
+    # idle_timeout is computed here (moved ahead of where it's used
+    # below) so the handshake's own drain() -- found to have the same
+    # unprotected-drain gap as the input-pump's below, in a follow-up
+    # audit -- can be bounded by it too, not just the later read/write
+    # pumps.
+    try:
+        idle_timeout = int(os.environ.get('DOOR_IDLE_TIMEOUT', '300'))
+    except ValueError:
+        idle_timeout = 300
+
     # Send rlogin handshake. Synchronet BBS-style ordering:
     #   \0 + password\0 + username\0 + terminal/speed\0
     # Field 1 = AUTH (password), Field 2 = BBS USERNAME to log in as.
@@ -2949,7 +2959,12 @@ async def play_rlogin_telnet(game, user, session, bbs_name='ANetBBS',
                  + terminal.encode('utf-8', errors='replace') + b'\x00')
     try:
         writer.write(handshake)
-        await writer.drain()
+        # Timeout-wrapped: found missing in a follow-up audit -- a
+        # remote rlogin server that accepts the TCP connection but
+        # never actually reads the handshake off the wire (without
+        # closing the socket) hung this drain() forever, before the
+        # idle-timeout machinery below even started.
+        await asyncio.wait_for(writer.drain(), timeout=idle_timeout)
     except Exception as exc:  # pylint: disable=broad-except
         await session.write(f"\r\nrlogin handshake failed: {exc}\r\n")
         try: writer.close()
@@ -2983,11 +2998,9 @@ async def play_rlogin_telnet(game, user, session, bbs_name='ANetBBS',
     # file already has an idle timeout (DOOR_IDLE_TIMEOUT, see
     # play_door_game_telnet/launch_telnet_session above); this one
     # (and its sibling play_telnet_terminal below) were the two gaps.
+    # (idle_timeout itself is computed earlier now, ahead of the
+    # handshake's own drain() -- see the comment there.)
     idle_event = asyncio.Event()
-    try:
-        idle_timeout = int(os.environ.get('DOOR_IDLE_TIMEOUT', '300'))
-    except ValueError:
-        idle_timeout = 300
 
     # Pump bytes from the rlogin socket -> the BBS user's terminal
     async def _output_pump():
@@ -3029,7 +3042,10 @@ async def play_rlogin_telnet(game, user, session, bbs_name='ANetBBS',
                 try:
                     writer.write(b'\x1d')
                     writer.write(ch)
-                    await writer.drain()
+                    # Timeout-wrapped: found missing in a follow-up
+                    # audit -- a remote that stops reading without
+                    # closing the socket used to hang this forever.
+                    await asyncio.wait_for(writer.drain(), timeout=idle_timeout)
                 except Exception:
                     break
                 continue
@@ -3038,7 +3054,7 @@ async def play_rlogin_telnet(game, user, session, bbs_name='ANetBBS',
                 continue
             try:
                 writer.write(ch)
-                await writer.drain()
+                await asyncio.wait_for(writer.drain(), timeout=idle_timeout)
             except Exception:
                 break
 
@@ -3285,7 +3301,10 @@ async def play_telnet_terminal(game, user, session, bbs_name='ANetBBS',
             if reply:
                 try:
                     writer.write(reply)
-                    await writer.drain()
+                    # Timeout-wrapped: found missing in a follow-up
+                    # audit -- same unprotected-drain gap as the input
+                    # pump below.
+                    await asyncio.wait_for(writer.drain(), timeout=idle_timeout)
                 except Exception:
                     break
             if not display:
@@ -3318,7 +3337,10 @@ async def play_telnet_terminal(game, user, session, bbs_name='ANetBBS',
                 try:
                     writer.write(b'\x1d')
                     writer.write(ch)
-                    await writer.drain()
+                    # Timeout-wrapped: found missing in a follow-up
+                    # audit -- a remote that stops reading without
+                    # closing the socket used to hang this forever.
+                    await asyncio.wait_for(writer.drain(), timeout=idle_timeout)
                 except Exception:
                     break
                 continue
@@ -3327,7 +3349,7 @@ async def play_telnet_terminal(game, user, session, bbs_name='ANetBBS',
                 continue
             try:
                 writer.write(ch)
-                await writer.drain()
+                await asyncio.wait_for(writer.drain(), timeout=idle_timeout)
             except Exception:
                 break
 

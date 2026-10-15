@@ -713,32 +713,35 @@ else
     # Python 3.13's threading.py requires this attribute at import time.
     #
     # IMPORTANT: version number alone is NOT sufficient. Prebuilt wheels
-    # from piwheels (Raspberry Pi) ship eventlet 0.37.0 without this fix
-    # because the wheel was compiled before the patch merged.  We grep the
-    # installed file directly — if the attribute is absent we force a source
-    # rebuild (--no-binary eventlet) which always has the fix.
+    # from piwheels (Raspberry Pi) have shipped eventlet versions without
+    # this fix because the wheel was compiled before the patch merged.
+    # We grep the installed file directly — if the attribute is absent we
+    # force a source rebuild (--no-binary eventlet) which always has the
+    # fix. The version floor used below when rebuilding is
+    # requirements.txt's own real CVE-driven floor (CVE-2025-58068), not
+    # just the minimum needed for this one Python-3.13 compat issue.
     EVT_THREAD_PY=$(find "$VENV_DIR/lib" -maxdepth 5 -path "*/eventlet/green/thread.py" 2>/dev/null | head -1)
     if [[ -z "$EVT_THREAD_PY" ]]; then
-        info "eventlet not yet installed (pip install above will pull in >=0.37.0)"
+        info "eventlet not yet installed (pip install above will pull in >=0.40.3)"
     elif grep -q "start_joinable_thread" "$EVT_THREAD_PY"; then
         ok "eventlet green/thread.py has start_joinable_thread — Python 3.13 compatible"
     else
         info "eventlet wheel missing start_joinable_thread (common piwheels aarch64 issue) — rebuilding from source..."
         _evt_fixed=false
-        if sudo -u "$SERVICE_USER" "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.38.0" --quiet 2>/dev/null; then
+        if sudo -u "$SERVICE_USER" "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.40.3" --quiet 2>/dev/null; then
             _evt_fixed=true
-        elif "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.38.0" --quiet 2>/dev/null; then
+        elif "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.40.3" --quiet 2>/dev/null; then
             _evt_fixed=true
         fi
         if [[ "$_evt_fixed" == "true" ]]; then
             ok "eventlet rebuilt from source — Python 3.13 compatible"
         else
             warn "eventlet source rebuild failed — trying relaxed version constraint..."
-            if "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.38.0" --quiet 2>/dev/null; then
+            if "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.40.3" --quiet 2>/dev/null; then
                 ok "eventlet rebuilt (newer version) — Python 3.13 compatible"
             else
                 warn "eventlet fix failed — web service will crash on Python 3.13"
-                warn "Manual fix: sudo $VENV_DIR/bin/pip install --force-reinstall --no-cache-dir --no-binary eventlet 'eventlet>=0.38.0'"
+                warn "Manual fix: sudo $VENV_DIR/bin/pip install --force-reinstall --no-cache-dir --no-binary eventlet 'eventlet>=0.40.3'"
             fi
         fi
     fi
@@ -2287,8 +2290,8 @@ if [[ "${CRITICAL_FAILED:-false}" == "true" ]]; then
         warn "anetbbs-web crashed: eventlet wheel missing start_joinable_thread (piwheels aarch64 issue)"
         info "Attempting auto-fix: rebuilding eventlet from source..."
         _evt_retry=false
-        if sudo -u "$SERVICE_USER" "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.38.0" --quiet 2>/dev/null || \
-           "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.38.0" --quiet 2>/dev/null; then
+        if sudo -u "$SERVICE_USER" "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.40.3" --quiet 2>/dev/null || \
+           "$VENV_DIR/bin/pip" install --force-reinstall --no-cache-dir --no-binary eventlet "eventlet>=0.40.3" --quiet 2>/dev/null; then
             _evt_retry=true
         fi
         if [[ "$_evt_retry" == "true" ]]; then
@@ -2305,7 +2308,7 @@ if [[ "${CRITICAL_FAILED:-false}" == "true" ]]; then
         if [[ "${CRITICAL_FAILED:-false}" == "true" ]]; then
             warn "Application files were updated successfully."
             warn "Only anetbbs-web is affected. Fix manually:"
-            warn "  sudo $VENV_DIR/bin/pip install --force-reinstall --no-cache-dir --no-binary eventlet 'eventlet>=0.38.0'"
+            warn "  sudo $VENV_DIR/bin/pip install --force-reinstall --no-cache-dir --no-binary eventlet 'eventlet>=0.40.3'"
             warn "  sudo systemctl restart anetbbs-web"
             fail "Web service failed to start — see fix above (files NOT rolled back)"
         fi

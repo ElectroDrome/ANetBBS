@@ -53,7 +53,11 @@ The wizard asks every question it needs, roughly in this order:
   `data/admin_password.txt` either way)
 - **Domain / hostname** + **web / telnet / SSH ports**
 - **Enable Telnet? Enable SSH? Enable nginx reverse proxy?**
-- **Install the MRC bridge (inter-BBS chat)?**
+- **Install the MRC bridge (inter-BBS chat)?** *(if yes)* **MRC
+  connection backend: `native`** (ANetBBS's own bridge, the default)
+  **or `mystic`** (runs the real vendored Mystic BBS multiplexer
+  client as a subprocess instead) — see
+  [27 — MRC chat](27-mrc-chat.md) for the difference.
 - **Enable inter-BBS Instant Messaging (MSP/SYSTAT — privileged ports
   18/11)? Enable Finger (privileged port 79)? Enable BinkP (FidoNet
   inbound mail, port 24554)?**

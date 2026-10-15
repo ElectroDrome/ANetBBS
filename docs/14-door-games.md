@@ -105,7 +105,8 @@ of these shares a common **persistent wallet** system
 A lightweight badge/achievement engine lives in
 `anetbbs/features/achievements.py` (models: `Achievement`,
 `UserAchievement`) — not games-specific, but documented here for lack
-of a more dedicated doc. Ten badges are seeded by default:
+of a more dedicated doc. Eighteen badges are seeded by default,
+including three directly game-related ones:
 
 | code            | name              | earned for                          |
 |-----------------|-------------------|--------------------------------------|
@@ -119,15 +120,27 @@ of a more dedicated doc. Ten badges are seeded by default:
 | `first_netmail` | Netmail Pioneer   | first outbound netmail message       |
 | `shouter`       | Town Crier        | 25 shoutbox posts                    |
 | `veteran`       | Veteran           | account older than 1 year            |
+| `high_score`    | High Scorer       | held the #1 spot on a Game Center leaderboard |
+| `game_explorer` | Game Explorer     | scored in 5 different Game Center titles |
+| `door_diver`    | Door Diver        | played 5 different door games        |
+| `wiki_editor`   | Wiki Editor       | first wiki edit                      |
+| `wiki_scribe`   | Wiki Scribe       | 10 wiki edits                        |
+| `file_uploader` | File Uploader     | first file upload                    |
+| `file_librarian`| Librarian         | 10 file uploads                      |
+| `town_legend`   | Town Legend       | 100 shoutbox posts                   |
 
 `check_for_user()` re-runs **every** rule for a user and awards any
 newly-qualifying badges, but it's only called from a handful of
 trigger points: login (`anetbbs/web/auth.py`), board post
 (`anetbbs/web/boards.py`), PM send (`anetbbs/web/pm.py`), and shoutbox
-post (`anetbbs/web/shoutbox.py`). Sending echomail or netmail doesn't
-itself trigger a check — the `first_echomail`/`first_netmail` badges
-only actually get awarded the next time the user hits one of those
-four trigger points afterward, not the instant they send the message.
+post (`anetbbs/web/shoutbox.py`). Nothing else — not a door-game
+session ending, a wiki save, a file upload, or sending echomail/
+netmail — triggers a check itself, so any badge keyed to one of those
+actions (`high_score`, `game_explorer`, `door_diver`, `wiki_editor`,
+`wiki_scribe`, `file_uploader`, `file_librarian`, `first_echomail`,
+`first_netmail`) only actually gets awarded the next time the user
+hits one of the four real trigger points afterward, not the instant
+they qualify.
 Newly-earned badges are flashed to the user at login; earned badges
 are listed on the user's own profile page
 (`anetbbs/web/profile.py`/`templates/profile/view.html`). There's no
@@ -443,8 +456,12 @@ If `mplc` isn't installed, the runner falls back to running an existing
 
 ## Synchronet door compat
 
-We ship a Node.js compat shim that emulates ~270 functions/objects from
-Synchronet's JS runtime — enough to run many stock doors that don't
+We ship a Node.js compat shim (`anetbbs/games/synchronet_compat.py`)
+that implements ~151 fields across `console`/`bbs`/`system`/`user`/
+`js`/`File`/`Queue` — real Synchronet's own surface across those same
+objects is roughly ~270, so this is partial, not full, coverage; see
+[15 — Synchronet compat](15-synchronet-compat.md)'s per-object table
+for the exact breakdown. Enough to run many stock doors that don't
 need full BBS internals. Highlights:
 
 - `bbs.sys_*` properties (sys_name, sys_op, etc.)

@@ -726,5 +726,96 @@ class MrcTcpUnboundedBufferProtectionTests(_TcpBridgeHarness):
         await writer.wait_closed()
 
 
+class MrcTcpConnectionCapTests(_TcpBridgeHarness):
+    """Regression tests for a real Low/Medium finding from a follow-up
+    security audit: handle_mrc_tcp_connection() tracked every accepted
+    connection in self.mrc_tcp_clients with NO ceiling at all, unlike
+    anetbbs/ftp/server.py's own max_cons/max_cons_per_ip convention --
+    once a sysop opts into binding mrc_tcp_listen_host to 0.0.0.0 for
+    remote umrc-client access, a single remote host opening many
+    concurrent connections (no auth gate before the connection is even
+    counted) had no sysop-configurable ceiling to fall back on."""
+
+    async def test_global_cap_rejects_connections_beyond_the_limit(self):
+        with mock.patch("mrc.bridge.main.MRC_TCP_MAX_CONNECTIONS", 3):
+            conns = []
+            for _ in range(3):
+                reader, writer = await self._connect()
+                await self._iamhere(writer, "StingRay")
+                conns.append((reader, writer))
+                await self._wait_until(
+                    lambda: len(self.app.mrc_tcp_clients) == len(conns))
+
+            self.assertEqual(len(self.app.mrc_tcp_clients), 3)
+
+            # The 4th connection is accepted at the TCP layer (the
+            # listening socket itself has no cap -- only the app-level
+            # handler does) but must be refused and closed immediately
+            # by the handler, without ever being added to tracking.
+            over_reader, over_writer = await self._connect()
+            closed = await self._wait_until(lambda: over_reader.at_eof())
+            self.assertTrue(closed, 'the connection beyond the global cap '
+                            'must be closed by the server, not left open')
+            self.assertEqual(len(self.app.mrc_tcp_clients), 3,
+                             'the rejected connection must never be added '
+                             'to the tracked-clients dict')
+
+            for _, w in conns:
+                w.close()
+                await w.wait_closed()
+            try:
+                over_writer.close()
+                await over_writer.wait_closed()
+            except Exception:
+                pass
+
+    async def test_per_ip_cap_rejects_connections_beyond_the_limit(self):
+        # All connections in this test are from 127.0.0.1 (loopback),
+        # so the per-IP cap is what's actually exercised here -- the
+        # global cap is left high enough to not interfere.
+        with mock.patch("mrc.bridge.main.MRC_TCP_MAX_CONNECTIONS", 100), \
+             mock.patch("mrc.bridge.main.MRC_TCP_MAX_CONNECTIONS_PER_IP", 2):
+            conns = []
+            for _ in range(2):
+                reader, writer = await self._connect()
+                await self._iamhere(writer, "StingRay")
+                conns.append((reader, writer))
+                await self._wait_until(
+                    lambda: len(self.app.mrc_tcp_clients) == len(conns))
+
+            over_reader, over_writer = await self._connect()
+            closed = await self._wait_until(lambda: over_reader.at_eof())
+            self.assertTrue(closed, 'a 3rd connection from the same IP, '
+                            'over the per-IP cap, must be refused')
+            self.assertEqual(len(self.app.mrc_tcp_clients), 2)
+
+            for _, w in conns:
+                w.close()
+                await w.wait_closed()
+            try:
+                over_writer.close()
+                await over_writer.wait_closed()
+            except Exception:
+                pass
+
+    async def test_connections_at_exactly_the_cap_are_still_accepted(self):
+        """Sanity check the fix doesn't off-by-one and reject the
+        LAST legitimate connection too."""
+        with mock.patch("mrc.bridge.main.MRC_TCP_MAX_CONNECTIONS", 2):
+            conns = []
+            for _ in range(2):
+                reader, writer = await self._connect()
+                await self._iamhere(writer, "StingRay")
+                conns.append((reader, writer))
+                await self._wait_until(
+                    lambda: len(self.app.mrc_tcp_clients) == len(conns))
+
+            self.assertEqual(len(self.app.mrc_tcp_clients), 2)
+
+            for _, w in conns:
+                w.close()
+                await w.wait_closed()
+
+
 if __name__ == "__main__":
     unittest.main()
