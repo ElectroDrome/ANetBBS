@@ -335,6 +335,25 @@ def _ensure_host_key(key_file):
     return key_path
 
 
+def _ensure_ed25519_host_key(rsa_key_file):
+    """
+    Generate an Ed25519 host key alongside the existing RSA one, if it
+    doesn't exist yet. Offered as a SECOND host key -- the RSA key stays
+    first and untouched, so existing clients' known_hosts entries for it
+    keep working -- while modern clients that prefer Ed25519 (smaller,
+    faster, no SHA-1 legacy baggage) get it automatically. On an
+    already-running install this self-heals on the next process start,
+    the same way a new DB column self-heals via _ensure_column().
+    """
+    key_path = os.path.abspath(rsa_key_file) + '_ed25519'
+    if not os.path.exists(key_path):
+        logger.info('Generating SSH Ed25519 host key at %s', key_path)
+        key = asyncssh.generate_private_key('ssh-ed25519')
+        key.write_private_key(key_path)
+        os.chmod(key_path, 0o600)
+    return key_path
+
+
 async def start_ssh_server(host, port, key_file, bbs_config):
     """
     Start the asyncssh BBS SSH server.
@@ -349,12 +368,13 @@ async def start_ssh_server(host, port, key_file, bbs_config):
         The asyncssh server object.
     """
     key_path = _ensure_host_key(key_file)
+    ed25519_key_path = _ensure_ed25519_host_key(key_file)
 
     server = await asyncssh.create_server(
         _BBSSshServer,
         host=host,
         port=port,
-        server_host_keys=[key_path],
+        server_host_keys=[key_path, ed25519_key_path],
         process_factory=_make_process_handler(bbs_config),
         encoding=None,
         x11_forwarding=False,

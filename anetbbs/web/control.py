@@ -657,6 +657,29 @@ def nodespy_view(slot):
     return render_template('admin/nodespy.html', node=row)
 
 
+@control_bp.route('/nodespy/<int:slot>/screen.json')
+@login_required
+def nodespy_screen_json(slot):
+    """Live screen mirror poll -- admin-only (see BBSSession._spy_tee()'s
+    own docstring for why this is safe to populate here but NOT on the
+    public /watch page, which never calls this route or reads
+    NodeActivity.last_screen at all)."""
+    _require_admin()
+    from ..models import NodeActivity
+    cutoff = datetime.utcnow() - timedelta(minutes=5)
+    row = (NodeActivity.query
+           .filter(NodeActivity.slot == slot)
+           .filter(NodeActivity.last_seen >= cutoff)
+           .first())
+    if row is None or not row.last_screen:
+        return jsonify({'ok': False})
+    return jsonify({
+        'ok': True,
+        'html': row.last_screen,
+        'last_seen': (row.last_seen.isoformat() + 'Z') if row.last_seen else '',
+    })
+
+
 @control_bp.route('/nodespy/<int:slot>/kick', methods=['POST'])
 @login_required
 def nodespy_kick(slot):

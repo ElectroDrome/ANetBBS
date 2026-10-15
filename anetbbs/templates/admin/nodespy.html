@@ -16,14 +16,37 @@
     </div>
 </div>
 
-{% if node.last_screen %}
-<div class="card">
-    <div class="card-header"><i class="bi bi-tv"></i> Last screen snapshot</div>
-    <pre style="background:#000;color:#aaa;padding:10px;
+<div class="card" id="spy-screen-card" {% if not node.last_screen %}style="display:none;"{% endif %}>
+    <div class="card-header"><i class="bi bi-tv"></i> Live screen mirror
+        <span class="text-muted small ms-2" id="spy-screen-updated"></span>
+    </div>
+    <pre id="spy-screen-pre" style="background:#000;color:#aaa;padding:10px;margin:0;
                 font-family: 'Cascadia Mono','Consolas','Courier New',monospace;
-                font-size:14px; line-height:1.0; white-space:pre; overflow:auto;">{{ node.last_screen }}</pre>
+                font-size:14px; line-height:1.15; white-space:pre; overflow:auto;">{{ node.last_screen | safe }}</pre>
 </div>
-{% endif %}
+<script>
+(function () {
+    'use strict';
+    var slot = {{ node.slot }};
+    var url = {{ url_for('control.nodespy_screen_json', slot=node.slot) | tojson }};
+    function poll() {
+        fetch(url, {credentials: 'same-origin'})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) { return; }
+                var card = document.getElementById('spy-screen-card');
+                var pre = document.getElementById('spy-screen-pre');
+                var updated = document.getElementById('spy-screen-updated');
+                if (card) { card.style.display = ''; }
+                if (pre) { pre.innerHTML = data.html; }
+                if (updated) { updated.textContent = 'Updated ' + new Date().toLocaleTimeString(); }
+            })
+            .catch(function () { /* best-effort -- stay quiet on failure */ });
+    }
+    poll();
+    setInterval(poll, 1000);
+})();
+</script>
 
 <div class="mt-2 d-flex gap-2">
     <a href="{{ url_for('control.index') }}" class="btn btn-sm btn-secondary">← Back</a>

@@ -375,6 +375,12 @@ class BBSSession:
         # ('enhanced' term_mode only) -- see _enhanced_feed()'s own
         # docstring. None until the first 'enhanced'-mode write/screen.
         self._enhanced_vt_state = None
+        # Shadow virtual-screen state for the admin NodeSpy live screen
+        # mirror -- see _spy_tee()'s own docstring. Separate from
+        # _enhanced_vt_state above: this one is fed for EVERY term_mode
+        # (ansi/ascii/petscii/wide/enhanced alike), not just 'enhanced'.
+        self._spy_vt_state = None
+        self._spy_last_persist = None
         # True from the moment a structured 'menu' overlay message is
         # sent (encode_menu() -- see _login_lightbar_menu(), menu_engine.
         # py's _draw_menu(), games.py's show_door_menu()/
@@ -1535,6 +1541,48 @@ class BBSSession:
         except Exception:
             self._node_activity_id = None
 
+    _SPY_PERSIST_MIN_INTERVAL = 0.5  # seconds -- throttle DB writes
+
+    def _spy_tee(self, text):
+        """Feed visible screen text into a dedicated shadow VT state
+        (self._spy_vt_state) and, throttled, persist a rendered HTML
+        snapshot to NodeActivity.last_screen via _heartbeat_node() --
+        this is the admin-only NodeSpy live screen mirror.
+
+        That column already existed (see docs/29-watch-live.md) but
+        was never actually populated: the PUBLIC /watch page
+        deliberately never reads it (no privacy allowlist exists for
+        showing a stranger a password prompt or a PM compose screen),
+        so it was left wired up but dead rather than filled in
+        unsafely. The admin NodeSpy view is a different trust
+        boundary entirely -- already gated by _require_admin(), it's
+        the sysop's own screen-spy tool, the same thing real DOS-era
+        BBS software (WWIV's node spy, Synchronet's "spy on node")
+        has always given the sysop. That's the gate this feeds; /watch
+        is untouched and still never reads this column.
+
+        Runs for every term_mode (ansi/ascii/petscii/wide/enhanced
+        alike), independent of _enhanced_vt_state -- so every session
+        gets a mirror, not just Enhanced Client ones. Best-effort: a
+        hiccup here must never affect the real session output.
+        """
+        if not text:
+            return
+        try:
+            from ..features.ansi_html import _run_vt, cells_to_html
+            cells, max_row, new_state = _run_vt(text, state=self._spy_vt_state)
+            self._spy_vt_state = new_state
+            if max_row < 0:
+                return
+            now = datetime.utcnow()
+            last = self._spy_last_persist
+            if last is not None and (now - last).total_seconds() < self._SPY_PERSIST_MIN_INTERVAL:
+                return
+            self._spy_last_persist = now
+            self._heartbeat_node(screen=cells_to_html(cells, max_row))
+        except Exception:
+            pass
+
     def _heartbeat_node(self, page=None, action=None, screen=None):
         """Update the NodeActivity row with current page/action.
         Called from menu_engine after each menu render and after each
@@ -1666,12 +1714,14 @@ class BBSSession:
         rows = frames[0].count('\r\n')
         if rows <= 0:
             return
-        up = f'\x1b[{rows}A'.encode('latin-1')
+        up_text = f'\x1b[{rows}A'
+        up = up_text.encode('latin-1')
         try:
             for frame in frames:
                 self.writer.write(up)
                 self.writer.write(frame.encode('latin-1'))
                 await self._drain_protected()
+                self._spy_tee(up_text + frame)
                 await asyncio.sleep(_ANIM_FRAME_DELAY)
         except Exception:
             pass
@@ -1841,6 +1891,7 @@ class BBSSession:
                         if suffix:
                             unicode_text = unicode_text + '\r\n'
                         await self._enhanced_feed(unicode_text)
+                        self._spy_tee(unicode_text)
                     except Exception:
                         pass
                     return
@@ -1865,6 +1916,7 @@ class BBSSession:
                     else:
                         self.writer.write(data)
                         await self._drain_protected()
+                    self._spy_tee(data.decode('latin-1'))
                 except UnicodeEncodeError:
                     await self.write(text)
 
@@ -1881,6 +1933,7 @@ class BBSSession:
                         else:
                             self.writer.write(_PAUSE_PROMPT)
                             await self._drain_protected()
+                            self._spy_tee(_PAUSE_PROMPT.decode('latin-1'))
                         await self.read_key('')
                     elif mode != 'enhanced':
                         # In-place cursor-up redraw animation -- no
@@ -1897,6 +1950,7 @@ class BBSSession:
                 else:
                     self.writer.write(_PAUSE_PROMPT)
                     await self._drain_protected()
+                    self._spy_tee(_PAUSE_PROMPT.decode('latin-1'))
                 await self.read_key('')
         except Exception:
             pass
@@ -2645,6 +2699,11 @@ class BBSSession:
         """Write text to the terminal. Broken pipes are normal — port
         probes and rage-quitting clients both close the socket while we
         still have IAC negotiation in flight. Don't spam the journal."""
+        try:
+            self._spy_tee(text if isinstance(text, str)
+                          else text.decode('latin-1', errors='replace'))
+        except Exception:
+            pass
         if self.term_mode == 'enhanced':
             # Its own branch, not woven into the str/bytes dispatch
             # below -- unlike every other mode, 'enhanced' output isn't

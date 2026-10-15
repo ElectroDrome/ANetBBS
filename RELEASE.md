@@ -1,3 +1,9 @@
+# ANetBBS v1.1.39 — SSH hardening, and a live NodeSpy screen mirror (October 2026)
+
+The SSH server now generates and offers an Ed25519 host key alongside its existing RSA-2048 one, rather than RSA alone. Both are offered together — existing `known_hosts` entries for the RSA key keep working — but a modern client that prefers Ed25519 (smaller, faster, no SHA-1-era baggage) now gets it automatically. An already-running install picks up the new key the next time its SSH service restarts, same self-healing pattern as a new DB column — no sysop action needed beyond a normal update/restart. Also bumps the `asyncssh` dependency floor to pick up several upstream fixes released since the previous floor; none were actually reachable through how this app uses the library, but cost nothing to clear.
+
+The admin NodeSpy panel's per-node detail view now shows a genuinely live screen mirror — the real rendered content of a user's terminal, with ANSI color, refreshing about once a second — instead of just a page/action label. The underlying column for this already existed and the page already had a spot for it; this closes the gap that left it unpopulated. Admin-only, same permission gate as the rest of the Control Center; the public "Watch It Live" page does not and will not show this.
+
 # ANetBBS v1.1.38 — Web dashboard MRC Stats widget, plus a small internal MRC-theme follow-up (October 2026)
 
 The home page's sidebar can now show a live "MRC Stats" card (BBSes, Rooms, Users, Activity) reflecting the whole multi-relay-chat network, not just this BBS's own sessions — reads directly from the public hub status endpoint, so it works independently of whether the local MRC bridge is enabled. Cached server-side and refreshed in the browser once a minute; falls back to the last known reading rather than erroring out if the remote is briefly unreachable. Set `MRC_NETWORK_STATS_ENABLED=false` to hide the card entirely.

@@ -308,9 +308,17 @@ def _run_vt(text: str, state=None):
     return cells, max_row, final_state
 
 
-def _to_html_vt(text: str) -> str:
-    """Virtual-terminal renderer — builds a 2-D cell grid, renders to HTML."""
-    cells, max_row, _state = _run_vt(text)
+def cells_to_html(cells: dict, max_row: int, width: int = 80) -> str:
+    """Render an already-computed _run_vt() cell grid to HTML.
+
+    Factored out of _to_html_vt() so a caller that already has
+    cells/max_row from a CONTINUING VT state (e.g. a persisted
+    shadow-screen snapshot -- see session.py's _spy_tee(), used by the
+    admin NodeSpy live screen mirror) can render it without re-running
+    the VT parser. _to_html_vt() itself is just this function applied
+    to a fresh one-shot _run_vt() call -- behavior for existing callers
+    is unchanged.
+    """
     if max_row < 0:
         return ''
 
@@ -318,7 +326,6 @@ def _to_html_vt(text: str) -> str:
     for (r, c), v in cells.items():
         by_row[r][c] = v
 
-    WIDTH = 80
     out = []
     for r in range(max_row + 1):
         row_cells = by_row.get(r)
@@ -330,7 +337,7 @@ def _to_html_vt(text: str) -> str:
         span_open = False
         row_out = []
 
-        for c in range(WIDTH):
+        for c in range(width):
             cell = row_cells.get(c)
             if cell is None:
                 char = ' '; cfg = '#aaaaaa'; cbg = None; cb = False
@@ -356,6 +363,12 @@ def _to_html_vt(text: str) -> str:
             out.append('<br>')
 
     return ''.join(out)
+
+
+def _to_html_vt(text: str) -> str:
+    """Virtual-terminal renderer — builds a 2-D cell grid, renders to HTML."""
+    cells, max_row, _state = _run_vt(text)
+    return cells_to_html(cells, max_row)
 
 
 def to_ansi_lines(text: str, width: int = 80) -> list:

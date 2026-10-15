@@ -1,11 +1,36 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.38`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.39`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.39 — SSH hardening, and a live NodeSpy screen mirror (October 2026)
+
+The SSH server now generates and offers an Ed25519 host key alongside
+its existing RSA-2048 one, rather than RSA alone. Both are offered
+together — nothing about the existing RSA key changes, so already-saved
+`known_hosts` entries keep working — but a modern SSH client that
+prefers Ed25519 (smaller, faster, no SHA-1-era baggage) now gets it
+automatically. An already-running install picks up the new key the
+next time its SSH service restarts, the same self-healing pattern new
+database columns already use here — no sysop action needed beyond a
+normal update/restart. Also bumps the SSH library (`asyncssh`)
+dependency floor to pick up several upstream fixes released since the
+previous floor, none of which were actually reachable through how
+this app uses the library, but cost nothing to clear anyway.
+
+The admin NodeSpy panel's per-node detail view now shows a genuinely
+live screen mirror — the actual rendered content of a user's terminal,
+with real ANSI color, refreshing about once a second — rather than
+just a "what page/action are they in" label. This closes a long-
+standing gap: the underlying database column for this existed and the
+per-node page already had a spot for it, but nothing ever populated
+it. Admin-only, same permission gate as the rest of the Control
+Center; the public "Watch It Live" page does not and will not show
+this, for the privacy reasons already documented there.
 
 ## v1.1.38 — Web dashboard MRC Stats widget, plus a small internal MRC-theme follow-up (October 2026)
 

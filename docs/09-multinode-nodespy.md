@@ -41,7 +41,14 @@ every 4 seconds and shows:
 - Current page (`main`, `boards`, `door:lord`, ...)
 - Last action label
 - Idle seconds
-- Eye-icon link → per-node detail with last screen snapshot
+- Eye-icon link → per-node detail, including a **live screen
+  mirror** — the actual rendered content of that user's terminal,
+  with real ANSI color, updating about once a second (same thing a
+  sysop watches with WWIV's node spy or Synchronet's "spy on node").
+  Admin-only, same `_require_admin()` gate as the rest of this panel
+  — this is NOT the same data the public `/watch` page shows (see
+  [29 — Watch It Live](29-watch-live.md)), which deliberately never
+  mirrors a real screen for privacy reasons.
 - Kick button → disconnects that node immediately
   (`/admin/control/nodespy/<slot>/kick`), logged to the admin audit
   trail as `kick_node`

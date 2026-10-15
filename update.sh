@@ -1208,6 +1208,18 @@ if [[ ! -f /etc/systemd/system/anetbbs.service ]]; then
         warn "Could not generate SSH host key — SSH may fail until you create $SSH_KEY"
         chown "$SERVICE_USER":"$SERVICE_USER" "$SSH_KEY" "$SSH_KEY.pub" 2>/dev/null || true
     fi
+    # Second host key offered alongside the RSA one -- an already-running
+    # install picks this up on its own via ssh_server.py's runtime
+    # self-heal (_ensure_ed25519_host_key()) the next time it restarts,
+    # so this block only matters for a brand-new install.
+    SSH_KEY_ED25519="${SSH_KEY}_ed25519"
+    if [[ ! -f "$SSH_KEY_ED25519" ]]; then
+        info "Generating SSH Ed25519 host key..."
+        sudo -u "$SERVICE_USER" ssh-keygen -t ed25519 -f "$SSH_KEY_ED25519" -N '' -q 2>/dev/null || \
+        ssh-keygen -t ed25519 -f "$SSH_KEY_ED25519" -N '' -q 2>/dev/null || \
+        warn "Could not generate SSH Ed25519 host key — continuing with RSA only"
+        chown "$SERVICE_USER":"$SERVICE_USER" "$SSH_KEY_ED25519" "$SSH_KEY_ED25519.pub" 2>/dev/null || true
+    fi
     cat > /etc/systemd/system/anetbbs.service << SVCEOF
 [Unit]
 Description=ANetBBS terminal protocols (telnet / ssh / rlogin / FTP / LMTP)

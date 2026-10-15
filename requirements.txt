@@ -67,13 +67,19 @@ simple-websocket>=1.0.0
 eventlet>=0.40.3
 
 # SSH server
-# 2.14.2 floor: CVE-2023-46445/CVE-2023-46446 (rogue extension/session
-# negotiation) + CVE-2023-48795 (Terrapin protocol downgrade) -- the
-# real SSH daemon callers connect to, so directly network-facing.
-# (CVE-2026-45309, an AuthorizedKeysFile `%u`-token path-traversal fixed
-# in 2.23.0, doesn't touch this floor's range -- only relevant if the
-# SSH server config ever uses that token pattern, which ours doesn't.)
-asyncssh>=2.14.2
+# 2.24.0 floor (bumped from 2.14.2 in a follow-up SSH review): the
+# 2.14.2 floor covered CVE-2023-46445/CVE-2023-46446 (rogue extension/
+# session negotiation) + CVE-2023-48795 (Terrapin protocol downgrade).
+# Neither CVE-2026-45309 (AuthorizedKeysFile `%u`-token path-traversal,
+# fixed 2.23.0) nor CVE-2026-54590 (authorized-keys-directory escape)
+# nor CVE-2026-54591 (SCP-client path traversal via a malicious
+# server), both fixed 2.23.1, touch this app directly -- it never uses
+# asyncssh's built-in AuthorizedKeysFile/authorized_client_keys
+# mechanism (validate_public_key() in ssh_server.py checks fingerprints
+# against our own User table instead) and never uses asyncssh as an
+# SCP/SFTP client. Bumped anyway since it costs nothing and keeps the
+# directly network-facing SSH daemon current.
+asyncssh>=2.24.0
 # 48.0.1 floor: the previous 44.0.1 floor was ITSELF inside the
 # vulnerable range for CVE-2026-69247 (PKCS#7 EnvelopedData decrypt
 # Bleichenbacher oracle, introduced 44.0.0, fixed 50.0.0) -- found in a

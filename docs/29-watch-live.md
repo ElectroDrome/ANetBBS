@@ -48,17 +48,19 @@ working as an `<iframe>` embed on another site. See
 [`docs/SECURITY.md`](SECURITY.md) for the full response-headers
 writeup.
 
-## What it doesn't do yet
+## What it doesn't do — and won't, on this page
 
 The original idea for this page was to mirror an actual live terminal
-screen, not just a "what area are they in" label. That turned out to
-need real new work that's deliberately **not** part of this release:
-the underlying `NodeActivity.last_screen` column exists but nothing
-in the codebase populates it yet, and there's no privacy allowlist
-built for which screens would ever be safe to show a stranger (never
-a PM/netmail compose screen, never a password prompt, never an admin
-menu). Building that safely is its own project for a future release,
-not bundled into this page.
+screen, not just a "what area are they in" label. `NodeActivity.
+last_screen` is now populated (see [09 — Multinode + NodeSpy](09-multinode-nodespy.md))
+and rendered live in the **admin-only** NodeSpy view — but `/watch`
+still never reads it and never will, by design: there's still no
+privacy allowlist for which screens would ever be safe to show an
+anonymous stranger (never a PM/netmail compose screen, never a
+password prompt, never an admin menu), and this public page is the
+wrong trust boundary to build that into. NodeSpy is gated behind
+`_require_admin()` — the sysop's own screen-spy tool, not something
+to extend to the general internet.
 
 ## Related files
 

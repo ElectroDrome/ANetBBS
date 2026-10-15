@@ -7,11 +7,15 @@ page) as a demonstration of ANetBBS's terminal-meets-web pitch.
 
 Deliberately built on the SAME UserSession data and coarse labeling as
 web/who.py (via core.presence_labels), not on NodeActivity.last_screen --
-last_screen is currently unpopulated everywhere in the codebase and has no
-privacy scoping built for it (see project notes); wiring that up safely is
-its own separate piece of work, not part of this page. This page only
-ever shows a friendly area label (e.g. "MRC Chat"), never a raw URL path,
-a specific room/board name, or message content.
+that column IS now populated (core/session.py's _spy_tee(), feeding the
+admin-only NodeSpy live screen mirror -- see docs/09-multinode-nodespy.md),
+but this page never reads it and never will: there's no privacy allowlist
+built for which screens would ever be safe to show an anonymous stranger
+(never a PM/netmail compose screen, never a password prompt, never an
+admin menu), and a public, no-login page is the wrong trust boundary to
+build that into. This page only ever shows a friendly area label (e.g.
+"MRC Chat"), never a raw URL path, a specific room/board name, or message
+content.
 
 Off by default (PUBLIC_WATCH_ENABLED, see config.py) -- unlike /who, this
 page shows the same presence data to the anonymous public internet rather
