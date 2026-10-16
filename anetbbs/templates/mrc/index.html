@@ -1250,7 +1250,9 @@
     // Matches the terminal client's own WIRE_CHUNK_DELAY (mrc_chat.py)
     // -- spaced out so a multi-chunk send doesn't trip the bridge's own
     // per-session rate limiter (message_rate_seconds, default 0.5s).
-    const WIRE_CHUNK_DELAY_MS = 600;
+    // 750 also matches umrc-client's own chunk spacing and the bridge's
+    // MRC_CHAT_PACKET_SPACING, which the hub's flood control requires.
+    const WIRE_CHUNK_DELAY_MS = 750;
 
     async function sendChunksSequentially(chunks, sendFn) {
       for (let i = 0; i < chunks.length; i++) {

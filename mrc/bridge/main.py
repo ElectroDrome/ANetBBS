@@ -75,11 +75,12 @@ MRC_STYLE_SUFFIX_MAX_LEN = 32
 # their way to the hub (see _send_chat_packet). The hub's flood control
 # discards a chat line that arrives too soon after the same sender's
 # previous one -- found live with umrc-client, where 0.5s between
-# chunks lost lines. 0.6s matches the chunk delay both of ANetBBS's own
-# clients already use (anetbbs/features/mrc_chat.py WIRE_CHUNK_DELAY,
-# mrc/web/index.html WIRE_CHUNK_DELAY_MS). umrc-client itself spaces
-# its own chunks 0.75s apart, so its traffic is never delayed by this.
-MRC_CHAT_PACKET_SPACING = 0.6
+# chunks lost lines, and later with ANetBBS's own clients at 0.6s.
+# 0.75s matches umrc-client's own chunk spacing, and the chunk delay
+# ANetBBS's own clients use (anetbbs/features/mrc_chat.py
+# WIRE_CHUNK_DELAY, mrc/web/index.html and
+# anetbbs/templates/mrc/index.html WIRE_CHUNK_DELAY_MS).
+MRC_CHAT_PACKET_SPACING = 0.75
 # Real gap found in a security review: handle_mrc_tcp_connection's
 # newline-delimited read loop (new this session, for native
 # umrc-client support) had no cap on how large its buffer could grow
