@@ -1,11 +1,20 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.41`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.42`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.42 — MRC multi-part message spacing fix (October 2026)
+
+Widened the delay between pieces of a split multi-part MRC chat message
+from 0.6 to 0.75 seconds, across the bridge and every client (terminal
+and web). The shorter spacing could trip the hub's flood control on
+longer messages, causing pieces to be dropped; the wider spacing matches
+what the external umrc-client already uses and clears the issue.
+Contributed by winzlocom.
 
 ## v1.1.41 — Full audit pass: hardening, dependency updates, and a documentation/wiki accuracy sweep (October 2026)
 
