@@ -94,7 +94,9 @@ TICKER_TICK_SECONDS = 1.5       # ticker redraw/advance interval
 # since two sends 0ms apart can never clear a 0.5s minimum gap. This
 # is intentionally a bit above the bridge's own default so a normal,
 # unconfigured install never hits this from its own splitting.
-WIRE_CHUNK_DELAY = 0.6
+# 0.75s also matches umrc-client's own chunk spacing and the bridge's
+# MRC_CHAT_PACKET_SPACING, which the hub's flood control requires.
+WIRE_CHUNK_DELAY = 0.75
 
 # Static fallback content for the scrolling ticker (see _ticker_items) --
 # always in rotation alongside any live hub-pushed BANNER:/STATS: text,
