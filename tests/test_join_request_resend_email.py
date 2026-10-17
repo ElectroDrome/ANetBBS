@@ -89,7 +89,11 @@ class _JoinResendTestBase(unittest.TestCase):
                 hub_identity_id=self.identity_id,
                 name=f'Applicant{suffix}', bbs_name=f'TestBBS{suffix}',
                 email=f'applicant{suffix}@example.com',
-                binkp_ftn_address=f'1200:1/{900 + hash(suffix) % 90}',
+                # sum(ord()) is deterministic across every run -- hash(suffix)
+                # uses Python's per-process randomized string hash, which can
+                # collide across this file's A-G suffixes under some
+                # PYTHONHASHSEED values and produce duplicate addresses.
+                binkp_ftn_address=f'1200:1/{900 + sum(ord(c) for c in suffix) % 90}',
                 rules_ack=True)
             db.session.add(req)
             db.session.commit()

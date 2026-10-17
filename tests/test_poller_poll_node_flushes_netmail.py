@@ -59,7 +59,12 @@ class PollNodeFlushesNetmailTests(unittest.TestCase):
         db.session.add(net)
         db.session.commit()
         node = BinkPNode(name=f'PollNodeTarget{suffix}',
-                         ftn_address=f'1200:1/{500 + hash(suffix) % 100}',
+                         # sum(ord()) is deterministic across every run -- the
+                         # previous hash(suffix) % 100 used Python's per-process
+                         # randomized string hash, which collided for two of
+                         # A/B/C under some PYTHONHASHSEED values and violated
+                         # ftn_address's unique constraint on a shared test DB.
+                         ftn_address=f'1200:1/{500 + sum(ord(c) for c in suffix) % 100}',
                          password='secret', network_id=net.id,
                          binkp_host='node.example.test', binkp_port=24554)
         db.session.add(node)

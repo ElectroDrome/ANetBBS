@@ -76,7 +76,11 @@ class RunNodeClientHatchOutTests(_DbTestBase):
         db.session.add(net)
         db.session.commit()
 
-        node = BinkPNode(name=f'HatchNode{suffix}', ftn_address=f'1200:1/{2000 + hash(suffix) % 1000}',
+        # sum(ord()) is deterministic across every run -- hash(suffix) uses
+        # Python's per-process randomized string hash, which can collide
+        # across this file's A/B/C suffixes under some PYTHONHASHSEED values
+        # and violate ftn_address's unique constraint on the shared test DB.
+        node = BinkPNode(name=f'HatchNode{suffix}', ftn_address=f'1200:1/{2000 + sum(ord(c) for c in suffix) % 1000}',
                          password='secret', network_id=net.id,
                          binkp_host='node.example.test', binkp_port=24554)
         db.session.add(node)

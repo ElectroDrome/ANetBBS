@@ -1,11 +1,25 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.43`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.44`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.44 — CI-only test flake fix (October 2026)
+
+Three echomail/BinkP test fixtures (`test_poller_poll_node_flushes_netmail.py`,
+`test_hatch_delivery_to_downstream_nodes.py`, `test_join_request_resend_email.py`)
+generated fake FTN node addresses from a single-letter suffix using Python's
+built-in `hash()`. That hash is randomized per interpreter process, so under
+some random seeds two different fixtures' suffixes hashed to the same address
+mod N and collided against a real database uniqueness constraint — a failure
+that depended entirely on which seed a given CI run happened to start with,
+and never reproduced locally under a different seed. Replaced with a
+deterministic character-sum calculation in all three files, verified stable
+across every tested seed including the two confirmed to collide under the
+old code. Test-only change; no application code affected.
 
 ## v1.1.43 — Second full audit pass: access-control, input-handling, and infrastructure hardening, plus a docs/wiki follow-up (October 2026)
 
