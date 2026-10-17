@@ -95,6 +95,20 @@ async def _act_door(ui, args):
         if not g.is_active:
             await ui.session.write("\r\nGame not found.\r\n")
             return None
+        # Real gap found in a security audit: every other door-launch
+        # path (GameManager._launch(), session.py's _launch_direct_door()
+        # for rlogin xtrn=) checks Game.min_access_level against the
+        # user's access level -- this direct-by-id/slug menu action
+        # never did, so a door an admin set a high access level on
+        # (expecting it hidden from the Game Center list, where it IS
+        # correctly filtered) was still reachable by any user through a
+        # plain menu hotkey pointed at its id/slug.
+        user_access = (ui.session.user or {}).get('access_level') or 10
+        if (g.min_access_level or 0) > user_access:
+            await ui.session.write(
+                "\r\n\x1b[1;31mYou don't have access to that "
+                "game.\x1b[0m\r\n")
+            return None
     # Real live bug: run_menu()'s own generic pre-dispatch heartbeat
     # (see its 'action=f"{action_type}({action_args or ""})"' call)
     # fires BEFORE this function even resolves which game "580" (the
@@ -838,7 +852,17 @@ def _load_menu_art_from_disk(menus_dir, menu_name, mode):
     applicable in ascii mode, which has no DB fallback).
     """
     import os as _os
+    import re as _re
     from .sauce import strip as _strip_sauce
+
+    # Path-traversal-shaped pattern found in a follow-up audit: menu_name
+    # is BbsMenu.name, sysop-set via Admin -> BBS Menus with no character
+    # restriction, never sanitized before reaching this join -- sibling
+    # of the same bug already fixed in ansi_ui.py's load_menu_ansi()
+    # 'slot' parameter. Restricting to the identifier-like charset every
+    # real menu name already uses can't break any legitimate menu while
+    # making a '..'/'/' segment simply not match any real file.
+    menu_name = _re.sub(r'[^A-Za-z0-9_-]', '', menu_name or '')
 
     if mode == 'ascii':
         path = _os.path.join(menus_dir, f'{menu_name}.asc')

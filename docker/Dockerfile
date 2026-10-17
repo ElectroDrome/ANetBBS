@@ -13,7 +13,12 @@
 # syntax=docker/dockerfile:1
 
 # ── Stage 1: build Python dependencies ──────────────────────────────────────
-FROM python:3.12-slim-bookworm AS builder
+# trixie floor: bookworm's regular security-support window closed and
+# moved to Debian's LTS team (still patched through ~2028, but reduced
+# arch coverage) -- found in a follow-up audit. trixie is the current
+# Debian stable. Re-check periodically, same posture as the docker-cli
+# base image below.
+FROM python:3.12-slim-trixie AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -37,7 +42,7 @@ RUN pip install --no-cache-dir --prefix=/install -e . \
 FROM docker:29-cli AS docker-cli
 
 # ── Stage 3: runtime image ──────────────────────────────────────────────────
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12-slim-trixie AS runtime
 
 # lrzsz: ZMODEM for terminal file transfers (file areas, ebook reader
 # download). openssh-client: outbound dial-out / BinkP over SSH tunnels.

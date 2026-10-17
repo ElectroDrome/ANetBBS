@@ -1,11 +1,48 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.42`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.43`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.43 — Second full audit pass: access-control, input-handling, and infrastructure hardening, plus a docs/wiki follow-up (October 2026)
+
+A second self-directed audit pass covering security, dependency/
+infrastructure currency, and documentation accuracy end to end. Generic
+summary below, deliberately not itemized by specific issue, per this
+project's standing policy for anything security-adjacent.
+
+**Hardening:** a terminal menu action and a database-driven menu's
+art-loading path each had a missing check closed — one around who is
+allowed to reach a given built-in program via a custom menu, the other
+around how a sysop-set menu name resolves to a file on disk. A couple
+of places where one user's own text could reach another user's
+terminal screen unfiltered were tightened to match protections already
+applied elsewhere in the same code. Two authentication-adjacent
+endpoints picked up a timing-consistency fix already applied to their
+sibling endpoints. The InterBBS mail system's file-request handling and
+the chat bridge's WebSocket listener each picked up a cap an equivalent,
+already-protected code path already had. None of these were reachable
+by an ordinary user doing ordinary things — fixed anyway, each with its
+own regression test.
+
+**Infrastructure:** every generated systemd service unit picked up
+additional sandboxing directives, scoped individually per unit's actual
+needs rather than applied as a blanket change; CI workflow actions were
+brought current ahead of a since-passed platform deprecation deadline,
+with automated monitoring added so this doesn't recur silently; the
+containerized build's base image moved off an end-of-life support
+track; and the automated dependency-update bot gained a second coverage
+lane it was missing.
+
+**Documentation and wiki:** a built-in wiki page overstated how many
+admin-review notification types exist and named one that doesn't
+actually have a settings toggle; another understated the current
+built-in game count by one; and a stale code comment describing a
+security header as not-yet-implemented was corrected to describe what
+has actually shipped since.
 
 ## v1.1.42 — MRC multi-part message spacing fix (October 2026)
 

@@ -18,3 +18,15 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
+
+  # Workflow action versions (actions/checkout, actions/setup-python, etc.)
+  # drift out of date just like pip packages -- a Node20 deprecation on
+  # actions/checkout@v4 and actions/setup-python@v5 went unnoticed past
+  # GitHub's own removal date before this entry existed.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"

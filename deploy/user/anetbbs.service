@@ -14,5 +14,28 @@ ExecStart=/opt/anetbbs/venv/bin/anetbbs
 Restart=always
 RestartSec=5
 
+# Baseline sandboxing, brought to parity with the system-level units'
+# own baseline (found missing in a follow-up audit) -- ProtectHome is
+# deliberately skipped here since a user-mode unit runs under the
+# sysop's own home directory and that directive would break it.
+# Stricter filesystem/syscall confinement (ProtectSystem=strict,
+# SystemCallFilter, MemoryDenyWriteExecute) is intentionally NOT
+# applied to this specific unit, same as its system-level counterpart
+# -- it launches external door-game subprocesses with sysop-configured
+# paths that can live anywhere on disk, and some (DOSBox's dynamic
+# recompiler core) need writable+executable memory a stricter policy
+# would block.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=default.target

@@ -2001,6 +2001,18 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# ProtectSystem=full (not strict) -- the Service Control Center's
+# self-upgrade feature writes across the whole \$INSTALL_DIR tree (git
+# pull / docker build), not just data/, so strict confinement here
+# would break it. full still locks down /usr, /boot, /etc. Found in a
+# follow-up audit, same round that added the other 4 directives below.
+ProtectSystem=full
+ReadWritePaths=$INSTALL_DIR/data $INSTALL_DIR/logs
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ExecStart=$VENV_DIR/bin/python $INSTALL_DIR/deploy/serve.py
 Restart=always
 RestartSec=5
@@ -2066,6 +2078,17 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# ProtectClock/ProtectHostname are safe additions found in a follow-up
+# audit. Stricter filesystem/syscall confinement (ProtectSystem=strict,
+# SystemCallFilter, MemoryDenyWriteExecute), applied to this unit's
+# siblings in that same audit, is intentionally NOT applied here: this
+# unit launches external door-game subprocesses whose executable/
+# working-directory paths are sysop-configured per Game row and can
+# live anywhere on disk (not just under \$INSTALL_DIR), and at least
+# one common door emulator (DOSBox's dynamic recompiler core) needs
+# writable+executable memory that MemoryDenyWriteExecute would block.
+ProtectClock=yes
+ProtectHostname=yes
 ExecStart=$VENV_DIR/bin/anetbbs
 Restart=always
 RestartSec=5
@@ -2100,6 +2123,18 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# Pure network daemon, no subprocess spawning -- safe for the full
+# strict baseline (found missing in a follow-up audit, matching
+# deploy/anetbbs-mrc-irc-bridge@.service's own template). config.json
+# above is only ever read by this process (this script writes it once,
+# outside this unit), so it needs no ReadWritePaths entry of its own.
+ProtectSystem=strict
+ReadWritePaths=$INSTALL_DIR/data $INSTALL_DIR/logs
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ExecStart=$VENV_DIR/bin/python -m mrc.bridge.main
 Restart=always
 RestartSec=10
@@ -2138,6 +2173,16 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# Pure network daemon, no subprocess spawning -- safe for the full
+# strict baseline (found missing in a follow-up audit, matching
+# deploy/anetbbs-mrc-irc-bridge@.service's own template).
+ProtectSystem=strict
+ReadWritePaths=$INSTALL_DIR/data $INSTALL_DIR/logs
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ExecStart=$VENV_DIR/bin/python -m anetbbs.core.finger_server
 Restart=always
 RestartSec=10
@@ -2180,6 +2225,16 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# Pure network daemon, no subprocess spawning -- safe for the full
+# strict baseline (found missing in a follow-up audit, matching
+# deploy/anetbbs-mrc-irc-bridge@.service's own template).
+ProtectSystem=strict
+ReadWritePaths=$INSTALL_DIR/data $INSTALL_DIR/logs
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ExecStart=$VENV_DIR/bin/python -m anetbbs.echomail.binkp_server
 Restart=always
 RestartSec=5

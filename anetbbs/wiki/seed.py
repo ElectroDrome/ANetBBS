@@ -176,7 +176,7 @@ in plumbing. Below is the full feature inventory.
 
 ## Doors
 
-- [[games|Game Center]] — 20 built-in browser games (puzzle, action,
+- [[games|Game Center]] — 21 built-in browser games (puzzle, action,
   cards/casino, strategy, RPG) plus terminal doors, all in one lobby
 - [[Doors]] — door game subsystem driving:
   - Native Synchronet (over rlogin)
@@ -1489,7 +1489,7 @@ go check every page yourself.
 
 ## For sysops — admin-review notifications
 
-Every `is_admin=True` user additionally gets notified about six
+Every `is_admin=True` user additionally gets notified about five
 things that need a sysop's review, so nobody has to manually check
 each admin page for new work:
 
@@ -1507,14 +1507,11 @@ each admin page for new work:
   not once per message. See [[Echomail]].
 - **Network join applications** — someone submitted the public
   "apply to join this network" form. See [[ANotherNetwork]].
-- **Social post queued for review** — the auto-social-posting feature
-  (Bluesky/Mastodon) queued a post that needs a sysop's go/no-go
-  before it ships. See **Admin → Social**.
 
 ## Preferences
 
 `/notifications/settings` lets you turn any kind off individually —
-default is on for everything. The six admin-review kinds only show
+default is on for everything. The five admin-review kinds only show
 up on this page for admin accounts; a regular user's settings page
 never shows toggles for notifications they could never receive.
 
@@ -1920,12 +1917,11 @@ shows the lot.
 - If you run the network hub: peek at the hatch/hold queue under
   Hub Management (see below) — a backlog there means outbound files
   or messages aren't reaching peers.
-- Check the notification bell: it flags six things that need a
+- Check the notification bell: it flags five things that need a
   sysop's review — MSP federation join requests, QWK node
   applications, users pending NUV approval, unknown/bad echomail
-  areas, network join applications, and social posts queued for
-  review. Each admin can toggle these independently at
-  `/notifications/settings` (admin-only toggles).
+  areas, and network join applications. Each admin can toggle these
+  independently at `/notifications/settings` (admin-only toggles).
 
 ## Weekly
 
@@ -2515,7 +2511,7 @@ Quick links to:
 - [[Files|Files Admin]]
 - [[Themes|Theme manager]]
 - [[Backup]]
-- [[Notifications|Notification Settings]] — turn off any of the six
+- [[Notifications|Notification Settings]] — turn off any of the five
   admin-review notification kinds you don't want (they're all on by
   default)
 - [[Scheduled Events]] — cron-style maintenance jobs (nodelist

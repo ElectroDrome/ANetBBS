@@ -18,7 +18,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO_ROOT))
 
 from anetbbs.features.xfer import _negotiate_binary
 
@@ -68,6 +69,54 @@ class XferDrainProtectedTests(unittest.TestCase):
         asyncio.run(asyncio.wait_for(
             _negotiate_binary(session, enable=True), timeout=5))
         # No exception propagated -- best-effort semantics preserved.
+
+
+class ProcStdinDrainTimeoutWrapTests(unittest.TestCase):
+    """Follow-up audit finding: send_file()'s and recv_file()'s own
+    _session_to_proc() pumps call `await proc.stdin.drain()` raw --
+    unlike every socket-writer drain() in this file (see the module
+    docstring above), a stuck DOS protocol subprocess that stops
+    reading its stdin without exiting could hang this call forever.
+    _session_to_proc() is a nested closure inside send_file()/
+    recv_file() that isn't independently importable and drives a real
+    subprocess pipeline end to end -- rather than reproducing that
+    whole pipeline here, this inspects the actual source text to
+    confirm each of the two `proc.stdin.drain()` call sites is now
+    genuinely wrapped in `asyncio.wait_for(..., timeout=
+    WRITE_DRAIN_TIMEOUT_SECONDS)`, which is directly sensitive to the
+    real fix (reverting it removes the wrapper, failing this test)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (_REPO_ROOT / 'anetbbs' / 'features' / 'xfer.py').read_text()
+
+    def _assert_wrapped(self, marker_count_label, after_marker):
+        idx = 0
+        found = 0
+        while True:
+            idx = self.source.find('proc.stdin.write(clean)', idx)
+            if idx == -1:
+                break
+            window = self.source[idx:idx + 300]
+            self.assertIn(
+                'asyncio.wait_for(', window,
+                f'{after_marker}: proc.stdin.drain() must be wrapped in '
+                f'asyncio.wait_for(...)')
+            self.assertIn(
+                'proc.stdin.drain()', window,
+                f'{after_marker}: expected proc.stdin.drain() inside the wait_for')
+            self.assertIn(
+                'WRITE_DRAIN_TIMEOUT_SECONDS', window,
+                f'{after_marker}: expected the shared drain-timeout constant')
+            found += 1
+            idx += 1
+        self.assertEqual(found, 2, 'expected exactly 2 proc.stdin.write(clean) '
+                         'sites (send_file() and recv_file()\'s own '
+                         '_session_to_proc() pumps), each immediately '
+                         'followed by a timeout-wrapped drain()')
+
+    def test_both_session_to_proc_drains_are_timeout_wrapped(self):
+        self._assert_wrapped('both sites', 'proc.stdin.write(clean)')
 
 
 if __name__ == '__main__':

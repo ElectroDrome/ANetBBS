@@ -6,6 +6,7 @@ Handles launching door games (DOS via DOSBox, native binaries, etc.) in a
 pseudo-terminal and bridging I/O to the WebSocket/xterm.js layer.
 """
 import os
+import re
 import pty
 import fcntl
 import signal
@@ -1697,6 +1698,7 @@ def launch_door_game(game, user, socketio_emit_fn, bbs_name='ANetBBS',
                 _log_dir = os.path.join(_install_root, 'logs')
                 os.makedirs(_log_dir, exist_ok=True)
                 _slug = (getattr(game, 'slug', None) or 'door').strip() or 'door'
+                _slug = re.sub(r'[^A-Za-z0-9_-]', '', _slug) or 'door'
                 _dlog = os.path.join(_log_dir,
                                      f'dosbox_{_slug}_node{node}.log')
                 _lfd = os.open(_dlog,
@@ -1724,6 +1726,7 @@ def launch_door_game(game, user, socketio_emit_fn, bbs_name='ANetBBS',
                 _log_dir = os.path.join(_install_root, 'logs')
                 os.makedirs(_log_dir, exist_ok=True)
                 _slug = (getattr(game, 'slug', None) or 'door').strip() or 'door'
+                _slug = re.sub(r'[^A-Za-z0-9_-]', '', _slug) or 'door'
                 _dlog = os.path.join(_log_dir,
                                      f'dosemu_{_slug}_node{node}.log')
                 _lfd = os.open(_dlog,

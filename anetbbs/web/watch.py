@@ -23,10 +23,11 @@ than only other logged-in BBS users, so it's opt-in for the sysop, and any
 individual user can exclude themselves via User.public_watch_optout in
 their profile settings.
 
-No CSP / X-Frame-Options exists anywhere in this app today, so nothing
-extra is needed here to allow iframe embedding. If site-wide clickjacking
-protection is ever added later, this route needs an explicit carve-out to
-stay embeddable.
+A real site-wide CSP and X-Frame-Options: DENY are now sent on every
+response (see web_app.py's _set_security_headers()) -- except here.
+Routes under this blueprint (endpoint names starting with "watch.") are
+explicitly exempted there (no CSP, no X-Frame-Options at all), so this
+page stays embeddable from any origin, per the rationale above.
 """
 from datetime import datetime, timedelta
 

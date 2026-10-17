@@ -31,6 +31,19 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# Pure network daemon, no subprocess spawning -- safe for the full
+# strict baseline (found missing in a follow-up audit, matching
+# deploy/anetbbs-mrc-irc-bridge@.service's own template). Config.json
+# above is only ever read by this process (install.sh/update.sh write
+# it once, outside this unit), so it needs no ReadWritePaths entry of
+# its own.
+ProtectSystem=strict
+ReadWritePaths=/opt/anetbbs/data /opt/anetbbs/logs
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ExecStart=/opt/anetbbs/venv/bin/python -m mrc.bridge.main
 Restart=always
 RestartSec=10

@@ -779,7 +779,17 @@ class BBSMenuUI:
                 i_list = []
                 for m in inbox:
                     sender = User.query.get(m.sender_id)
-                    i_list.append((m.id, m.subject, sender.username if sender else '?',
+                    # Real gap found in a follow-up audit: PrivateMessage.subject
+                    # is local-user-authored free text with no charset
+                    # restriction when composed via the web UI (web/pm.py only
+                    # runs word_filter.apply(), not a control-character
+                    # sanitizer) -- same category of risk _strip_untrusted()
+                    # already closes for echomail/InterBBS subject fields
+                    # above, just missed here. sender.username needs no
+                    # stripping -- usernames are already charset-restricted
+                    # at registration (see web/auth.py's RegisterForm).
+                    i_list.append((m.id, _strip_untrusted(m.subject),
+                                   sender.username if sender else '?',
                                    m.created_at, m.read_at is not None, m.body))
 
             _w = ui_width(self.session)
@@ -5297,7 +5307,17 @@ async def _list_threads_v2(self, board_id, board_name):
             t_list = []
             for t in threads:
                 author = User.query.get(t.author_id)
-                t_list.append((t.id, t.subject, author.username if author else '?',
+                # Real gap found in a follow-up audit: Post.subject is
+                # local-user-authored free text with no charset
+                # restriction when composed via the web UI (web/boards.py
+                # only runs word_filter.apply(), not a control-character
+                # sanitizer) -- same category of risk _strip_untrusted()
+                # already closes for echomail/InterBBS subject fields
+                # elsewhere in this file. author.username needs no
+                # stripping -- usernames are already charset-restricted
+                # at registration (see web/auth.py's RegisterForm).
+                t_list.append((t.id, _strip_untrusted(t.subject),
+                               author.username if author else '?',
                                t.created_at, t.replies.count()))
 
         _w = ui_width(self.session)

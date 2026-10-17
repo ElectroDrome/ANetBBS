@@ -1103,7 +1103,12 @@ def security_question_verify():
             return redirect(url_for('auth.reset_password', token=token))
         else:
             # Decoy questions (qa is None) always land here -- there is
-            # no correct answer, by design.
+            # no correct answer, by design. Still run a real hash
+            # verification (see _DUMMY_PASSWORD_HASH's own comment) so
+            # this branch costs the same as a real qa with a wrong
+            # answer, instead of a short-circuited instant return.
+            if qa is None:
+                check_password_hash(_DUMMY_PASSWORD_HASH, raw)
             error = 'Incorrect answer. Please try again.'
 
     return render_template('auth/security_question_verify.html',
@@ -1170,7 +1175,14 @@ def resend_verification():
                     db.func.lower(User.username) == identifier.lower()).first()
                 or User.query.filter(
                     db.func.lower(User.email) == identifier.lower()).first())
-        if user and user.check_password(pw) and not user.is_verified:
+        if user is None:
+            # Always run a real hash verification -- see
+            # _DUMMY_PASSWORD_HASH's own comment above -- so a
+            # nonexistent identifier takes statistically the same time
+            # as a real one with a wrong password, closing the
+            # enumeration timing oracle login() already closes.
+            check_password_hash(_DUMMY_PASSWORD_HASH, pw)
+        elif user.check_password(pw) and not user.is_verified:
             from ..mailer import send_verification_email, email_verify_enabled
             if not email_verify_enabled():
                 flash('Email verification is not enabled. Contact the sysop.', 'warning')

@@ -12,5 +12,21 @@ TimeoutStopSec=20
 Restart=always
 RestartSec=10
 
+# Baseline sandboxing, brought to parity with the system-level unit's
+# own baseline (found missing in a follow-up audit) -- ProtectHome is
+# deliberately skipped here since a user-mode unit runs under the
+# sysop's own home directory and that directive would break it.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=default.target

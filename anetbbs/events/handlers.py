@@ -374,6 +374,62 @@ def cleanup_stale_presence_events(app, params):
         return False, f'cleanup_stale_presence_events failed: {exc!r}'
 
 
+def cleanup_stale_hatch_queue(app, params):
+    """Mark long-stale HatchQueue rows 'failed' whose peer_address never
+    matched a real configured peer.
+
+    Real gap found in a follow-up security/performance audit:
+    binkp_server.py's inbound WaZOO FREQ handling now blocks NEW
+    HatchQueue rows from an anonymous/unauthenticated session (see
+    that module's own FREQ-handling comment for the fix), but any row
+    queued before that fix -- or any other row whose peer_address
+    simply doesn't match any currently-configured
+    EchomailNetwork.hub_address/BinkPNode.ftn_address (e.g. a peer
+    later removed from config) -- would otherwise sit 'pending'
+    forever: the poller/binkp client only ever match
+    HatchQueue.peer_address against a real peer's own configured
+    address by exact string, so a row with no matching peer is never
+    picked up, retried, or cleaned up by anything else. This is the
+    backstop: any 'pending' row older than `stale_days` (default 7)
+    whose peer_address doesn't match a real configured peer is marked
+    'failed' outright. A legitimate peer added back to config later
+    would get a fresh row on the next real FREQ -- nothing here
+    deletes data, it only stops a dead row from sitting pending
+    indefinitely.
+    """
+    try:
+        from ..models import db, HatchQueue, EchomailNetwork, BinkPNode
+        from datetime import datetime, timedelta
+        stale_days = int((params or {}).get('stale_days', 7))
+        cutoff = datetime.utcnow() - timedelta(days=stale_days)
+        real_addresses = {
+            addr for (addr,) in db.session.query(EchomailNetwork.hub_address)
+            .filter(EchomailNetwork.hub_address.isnot(None)).all()
+        } | {
+            addr for (addr,) in db.session.query(BinkPNode.ftn_address)
+            .filter(BinkPNode.ftn_address.isnot(None)).all()
+        }
+        stale_rows = (HatchQueue.query
+                      .filter(HatchQueue.status == 'pending')
+                      .filter(HatchQueue.queued_at < cutoff)
+                      .all())
+        updated = 0
+        for row in stale_rows:
+            if row.peer_address not in real_addresses:
+                row.status = 'failed'
+                row.error_message = (
+                    (row.error_message or '') +
+                    ' [auto-failed: peer_address matched no configured '
+                    'peer after stale_days]')
+                updated += 1
+        db.session.commit()
+        return True, (f'Marked {updated} stale unmatched hatch-queue '
+                      f'row(s) failed (pending, older than {stale_days}d, '
+                      f'no matching configured peer)')
+    except Exception as exc:  # noqa: BLE001
+        return False, f'cleanup_stale_hatch_queue failed: {exc!r}'
+
+
 def export_jam_message_bases(app, params):
     """Regenerate a real JAM message base (.jhr/.jdt/.jdx file triple)
     for every EchoArea with jam_export_enabled=True, so a classic
@@ -494,6 +550,7 @@ REGISTRY: Dict[str, HandlerFn] = {
     'cleanup_stale_game_sessions': cleanup_stale_game_sessions,
     'cleanup_stale_registry_entries': cleanup_stale_registry_entries,
     'cleanup_stale_presence_events': cleanup_stale_presence_events,
+    'cleanup_stale_hatch_queue': cleanup_stale_hatch_queue,
     'export_jam_message_bases': export_jam_message_bases,
     'hub_generate_nodelist': hub_generate_nodelist,
     'sync_wall_inbound':     sync_wall_inbound,
@@ -514,6 +571,7 @@ HANDLER_META = {
     'cleanup_stale_game_sessions': ('Clean up stale game-center node slots', "Close GameSession rows stuck at status='active' and release their node slot, for doors whose process crashed/was killed without a clean exit. Params: timeout_seconds (default 3600)."),
     'cleanup_stale_registry_entries': ('Federation registry: clean up unverified entries', 'Delete RegistryEntry rows that never completed email verification within stale_days (default 3). No-op on non-hub installs. Params: stale_days.'),
     'cleanup_stale_presence_events': ('Clean up old login/logout alert events', 'Delete PresenceEvent rows (the real-time "X just logged in/out" delivery queue) older than stale_minutes (default 60).'),
+    'cleanup_stale_hatch_queue': ('BinkP: fail orphaned outbound-file queue rows', "Mark 'pending' HatchQueue rows failed if their peer_address never matched a real configured peer and they've sat pending for stale_days (default 7) -- catches rows that can never be delivered. Params: stale_days."),
     'export_jam_message_bases': ('Export echo areas to JAM message base format', 'Regenerate a real .jhr/.jdt/.jdx JAM message base for every echo area with JAM export enabled (Admin -> Echomail -> area settings), so classic JAM-API door games can read it. Read-only snapshot, regenerated from scratch every run. Params: output_dir (default DATA_DIR/jam_export).'),
     'hub_generate_nodelist': ('ANotherNetwork: generate nodelist', 'Publish the ANotherNetwork nodelist into ANN.FILES.NODELIST. Only meaningful on the hub install.'),
     'sync_wall_inbound': ('InterBBS Wall: import inbound posts', 'Materialize new ANET_WALL echomail into local Wall posts. Auto-created when InterBBS Wall is enabled.'),
@@ -599,5 +657,16 @@ DEFAULT_EVENTS = [
         # short-lived (a delivery queue, not history), unlike the
         # once-daily cleanups above.
         'schedule_json': '{"kind": "interval", "minutes": 15}',
+    },
+    {
+        'name': 'BinkP: fail orphaned outbound-file queue rows',
+        'handler_key': 'cleanup_stale_hatch_queue',
+        'params_json': '{"stale_days": 7}',
+        # 05:45 UTC -- right after the other daily cleanup backstops.
+        # Seeded on every install (the handler itself is a fast no-op
+        # if nothing is actually orphaned) so an install with FREQ-
+        # enabled file areas is protected the moment this fix ships,
+        # with no separate admin step.
+        'schedule_json': '{"kind": "daily", "time": "05:45"}',
     },
 ]

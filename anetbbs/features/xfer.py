@@ -268,7 +268,10 @@ async def send_file(session, filepath: str, protocol: str = 'zmodem') -> bool:
                     if clean:
                         try:
                             proc.stdin.write(clean)
-                            await proc.stdin.drain()
+                            from ..core.session import WRITE_DRAIN_TIMEOUT_SECONDS
+                            await asyncio.wait_for(
+                                proc.stdin.drain(),
+                                timeout=WRITE_DRAIN_TIMEOUT_SECONDS)
                         except Exception as exc:
                             logger.debug("xfer send session→proc write: %s", exc)
                             break
@@ -397,7 +400,10 @@ async def recv_file(session, protocol: str = 'zmodem') -> list:
                     if clean:
                         try:
                             proc.stdin.write(clean)
-                            await proc.stdin.drain()
+                            from ..core.session import WRITE_DRAIN_TIMEOUT_SECONDS
+                            await asyncio.wait_for(
+                                proc.stdin.drain(),
+                                timeout=WRITE_DRAIN_TIMEOUT_SECONDS)
                         except Exception as exc:
                             logger.debug("xfer recv session→proc write: %s", exc)
                             break

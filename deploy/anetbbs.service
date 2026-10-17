@@ -50,6 +50,17 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# ProtectClock/ProtectHostname are safe additions found in a follow-up
+# audit. Stricter filesystem/syscall confinement (ProtectSystem=strict,
+# SystemCallFilter, MemoryDenyWriteExecute), applied to this unit's
+# siblings in that same audit, is intentionally NOT applied here: this
+# unit launches external door-game subprocesses whose executable/
+# working-directory paths are sysop-configured per Game row and can
+# live anywhere on disk (not just under /opt/anetbbs), and at least
+# one common door emulator (DOSBox's dynamic recompiler core) needs
+# writable+executable memory that MemoryDenyWriteExecute would block.
+ProtectClock=yes
+ProtectHostname=yes
 ExecStart=/opt/anetbbs/venv/bin/anetbbs
 Restart=always
 RestartSec=5

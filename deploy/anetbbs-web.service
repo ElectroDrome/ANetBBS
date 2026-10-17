@@ -41,6 +41,18 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
+# ProtectSystem=full (not strict) -- the Service Control Center's
+# self-upgrade feature writes across the whole /opt/anetbbs tree (git
+# pull / docker build), not just data/, so strict confinement here
+# would break it. full still locks down /usr, /boot, /etc. Found in a
+# follow-up audit, same round that added the other 4 directives below.
+ProtectSystem=full
+ReadWritePaths=/opt/anetbbs/data /opt/anetbbs/logs
+ProtectClock=yes
+ProtectHostname=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 ExecStart=/opt/anetbbs/venv/bin/python /opt/anetbbs/deploy/serve.py
 Restart=always
 RestartSec=5

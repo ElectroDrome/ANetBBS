@@ -1302,6 +1302,38 @@ async def _handle_connection(reader, writer, our_address: str, system_name: str)
                                     '(claimed address %s), dropping %s',
                                     _freq_source_ip, remote_addr, fname)
                                 continue
+                            # Real Medium finding from a follow-up
+                            # security audit: an anonymous crashmail
+                            # session's remote_addr is a fully
+                            # self-claimed, unvalidated M_ADR (see this
+                            # module's own docstring for why such
+                            # sessions are accepted at all). The
+                            # existing "Low" rating on FREQ reachability
+                            # reasoned only that an anonymous requester
+                            # can never have the matched files delivered
+                            # back TO ITSELF -- it missed that an
+                            # attacker can instead claim a REAL
+                            # third-party peer's public FTN address,
+                            # causing the poller/binkp client (which
+                            # match HatchQueue.peer_address against a
+                            # real configured peer by exact string) to
+                            # deliver files to that uninvolved peer on
+                            # its next legitimate session. Only queue
+                            # FREQ-matched files when this session
+                            # actually authenticated as a known hub
+                            # (net_id) or downstream node
+                            # (downstream_node_id) -- i.e. remote_addr
+                            # was verified against a real configured
+                            # peer during the handshake, not just
+                            # self-claimed in an unauthenticated M_ADR.
+                            if net_id is None and downstream_node_id is None:
+                                logger.info(
+                                    'BinkP: FREQ %s from anonymous/'
+                                    'unrecognized peer (claimed address '
+                                    '%s) ignored -- WaZOO FREQ requires '
+                                    'an authenticated hub or downstream-'
+                                    'node session', fname, remote_addr)
+                                continue
                             try:
                                 queued = process_inbound_req(payload, remote_addr)
                                 files_received += 1

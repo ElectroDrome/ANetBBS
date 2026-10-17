@@ -107,6 +107,17 @@ MRC_TCP_MAX_LINE_BYTES = 8192
 # to fall back on. Mirrors the FTP server's own convention/values.
 MRC_TCP_MAX_CONNECTIONS = 256
 MRC_TCP_MAX_CONNECTIONS_PER_IP = 8
+# Found missing in the same follow-up audit as MRC_TCP_MAX_CONNECTIONS
+# above: that fix only covered the raw-TCP listener. handle_websocket()
+# -- the /mrcws path every web MRC user and the terminal MRC door both
+# go through -- had the identical unbounded self.websockets tracking
+# gap. This path is reached by any authenticated BBS session (not
+# pre-auth; /mrcws sits behind nginx's auth_request), but it's also
+# the one shared multiplexer carrying every web/terminal user's chat
+# traffic, so unbounded concurrent connections from one account can
+# still exhaust the bridge process for everyone on that transport.
+MRC_WS_MAX_CONNECTIONS = 256
+MRC_WS_MAX_CONNECTIONS_PER_IP = 8
 
 
 def _find_config_path(explicit: Optional[str] = None) -> str:
@@ -1255,8 +1266,7 @@ class BridgeApp:
                 out.add(ws_id_str)
         return out
 
-    @staticmethod
-    async def _safe_send(ws, payload: dict):
+    async def _safe_send(self, ws, payload: dict):
         """Every ws.send_json() call must go through this. A client can
         close its socket (browser tab closed, terminal door killed) in
         the brief window between us receiving its message and sending a
@@ -1270,9 +1280,37 @@ class BridgeApp:
         to the rest of the process either way (aiohttp catches it at the
         per-request level, it doesn't crash the whole service), but it's
         needless log noise and violates the guard pattern already used
-        by the handful of call sites that happened to remember it."""
+        by the handful of call sites that happened to remember it.
+
+        Also wraps the send in the same drain-hang timeout used by this
+        bridge's raw-TCP counterpart (_send_mrc_tcp_payload) -- a 2026-10
+        audit couldn't confirm either way whether aiohttp's WebSocket
+        write path has an unbounded-blocking case equivalent to a raw
+        StreamWriter.drain() if a client stops reading without closing,
+        and the bare `except Exception` above wouldn't catch a true
+        hang anyway (no exception is raised while blocked). Bounding it
+        here costs nothing even if that case turns out not to exist."""
         try:
-            await ws.send_json(payload)
+            await asyncio.wait_for(
+                ws.send_json(payload),
+                # getattr(..., 30), not a bare attribute access: several
+                # test harnesses in this codebase build a BridgeApp via
+                # object.__new__(BridgeApp), skipping __init__ entirely,
+                # so this attribute isn't guaranteed to exist on every
+                # instance. A bare access would raise AttributeError
+                # *while evaluating wait_for's own arguments* -- before
+                # wait_for ever runs -- which would (a) get silently
+                # swallowed by the broad `except Exception` below and
+                # (b) leave the just-created send_json() coroutine
+                # orphaned, unawaited. Found exactly this via a real
+                # "coroutine was never awaited" RuntimeWarning while
+                # verifying this fix, not guessed.
+                timeout=getattr(self, '_mrc_tcp_write_timeout_seconds', 30))
+        except asyncio.TimeoutError:
+            try:
+                await ws.close()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -2058,11 +2096,6 @@ class BridgeApp:
         # WebSocket clients (browsers, aiohttp's own ws_connect() used by
         # the terminal MRC door) answer protocol-level pings automatically
         # -- no client-side change needed for this to take effect.
-        ws    = web.WebSocketResponse(heartbeat=30)
-        await ws.prepare(request)
-
-        ws_id = id(ws)
-        self.websockets[ws_id] = ws
         # Best-effort real caller IP for the web client, read from the
         # incoming HTTP request. /mrcws is reverse-proxied by nginx (see
         # anetbbs/web/mrc_web.py's own docstring), so request.remote
@@ -2074,8 +2107,33 @@ class BridgeApp:
         # expected to stay a loopback address -- _handle_join_room lets
         # an explicit "ip" field in the join_room message override it.
         xff = request.headers.get("X-Forwarded-For", "")
-        self._ws_remote_ip[ws_id] = (
+        remote_ip = (
             xff.split(",")[0].strip() if xff else (request.remote or ""))
+
+        # Connection-count caps -- see MRC_WS_MAX_CONNECTIONS's own
+        # comment. Rejected BEFORE the WebSocket upgrade even happens
+        # (ws.prepare() is never called), mirroring
+        # handle_mrc_tcp_connection's own "rejected before a single
+        # byte is read" shape.
+        if len(self.websockets) >= MRC_WS_MAX_CONNECTIONS:
+            logger.warning(
+                f"MRC WebSocket connection from {remote_ip} refused: "
+                f"at the global cap ({MRC_WS_MAX_CONNECTIONS})")
+            return web.Response(status=503, text="MRC bridge: too many connections")
+        if remote_ip:
+            per_ip = sum(1 for ip in self._ws_remote_ip.values() if ip == remote_ip)
+            if per_ip >= MRC_WS_MAX_CONNECTIONS_PER_IP:
+                logger.warning(
+                    f"MRC WebSocket connection from {remote_ip} refused: "
+                    f"at the per-IP cap ({MRC_WS_MAX_CONNECTIONS_PER_IP})")
+                return web.Response(status=503, text="MRC bridge: too many connections from your address")
+
+        ws    = web.WebSocketResponse(heartbeat=30)
+        await ws.prepare(request)
+
+        ws_id = id(ws)
+        self.websockets[ws_id] = ws
+        self._ws_remote_ip[ws_id] = remote_ip
         logger.info(f"WebSocket connected: {ws_id}")
 
         try:

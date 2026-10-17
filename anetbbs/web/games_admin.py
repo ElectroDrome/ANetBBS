@@ -11,7 +11,7 @@ from flask_login import login_required
 from flask_wtf import FlaskForm
 from wtforms import (StringField, TextAreaField, SelectField, IntegerField,
                      BooleanField, SubmitField)
-from wtforms.validators import DataRequired, Length, Optional, NumberRange
+from wtforms.validators import DataRequired, Length, Optional, NumberRange, Regexp
 
 from sqlalchemy.exc import IntegrityError
 
@@ -31,7 +31,10 @@ from .access_control import require_admin as _admin_required
 class GameCategoryForm(FlaskForm):
     """Add/Edit game category form."""
     name = StringField('Category Name', validators=[DataRequired(), Length(max=80)])
-    slug = StringField('Slug (URL-safe)', validators=[DataRequired(), Length(max=80)])
+    slug = StringField('Slug (URL-safe)', validators=[
+        DataRequired(), Length(max=80),
+        Regexp(r'^[A-Za-z0-9_-]+$',
+               message='Slug may only contain letters, numbers, hyphens, and underscores.')])
     sort_order = IntegerField('Sort Order', validators=[Optional()], default=0)
     as_submenu = BooleanField(
         'Show as a submenu section (instead of listing games inline)',
@@ -91,7 +94,10 @@ def _msgbase_area_groups():
 class GameForm(FlaskForm):
     """Add/Edit game form."""
     name = StringField('Name', validators=[DataRequired(), Length(max=100)])
-    slug = StringField('Slug (URL-safe)', validators=[DataRequired(), Length(max=100)])
+    slug = StringField('Slug (URL-safe)', validators=[
+        DataRequired(), Length(max=100),
+        Regexp(r'^[A-Za-z0-9_-]+$',
+               message='Slug may only contain letters, numbers, hyphens, and underscores.')])
     description = TextAreaField('Description', validators=[Optional()])
     category = SelectField('Category', choices=[], default='other', validate_choice=False)
     min_access_level = IntegerField(

@@ -980,7 +980,16 @@ class BBSSession:
             if ch == b'\x1b':
                 try:
                     nxt = await asyncio.wait_for(self.reader.read(1), timeout=0.12)
-                except (asyncio.TimeoutError, Exception):
+                except asyncio.TimeoutError:
+                    # See _reader_stored_exception's docstring: a
+                    # replayed stored exception surfaces as this same
+                    # TimeoutError type -- check before treating it as
+                    # a normal "no continuation byte yet" idle wait.
+                    stored = self._reader_stored_exception()
+                    if stored is not None:
+                        raise CarrierLost(str(stored)) from stored
+                    return 'ESC'
+                except Exception:
                     return 'ESC'
                 if nxt == b'[':
                     # CSI: read one byte at a time until the VT final byte
@@ -995,7 +1004,11 @@ class BBSSession:
                             seq += b
                             if 0x40 <= b[0] <= 0x7E:   # final byte
                                 break
-                    except (asyncio.TimeoutError, Exception):
+                    except asyncio.TimeoutError:
+                        stored = self._reader_stored_exception()
+                        if stored is not None:
+                            raise CarrierLost(str(stored)) from stored
+                    except Exception:
                         pass
                     if seq == b'A': return 'UP'
                     if seq == b'B': return 'DOWN'
@@ -1024,7 +1037,12 @@ class BBSSession:
                     try:
                         fin = await asyncio.wait_for(
                             self.reader.read(1), timeout=0.12)
-                    except (asyncio.TimeoutError, Exception):
+                    except asyncio.TimeoutError:
+                        stored = self._reader_stored_exception()
+                        if stored is not None:
+                            raise CarrierLost(str(stored)) from stored
+                        fin = b''
+                    except Exception:
                         fin = b''
                     if fin == b'A': return 'UP'
                     if fin == b'B': return 'DOWN'
