@@ -1,11 +1,37 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.44`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.45`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.45 — Fix: Min Read Level 0 (public access) silently reset to 10 (October 2026)
+
+Setting a board's Min Read Level to 0 (public/everyone) in the Web Admin
+UI silently saved as 10 (registered) instead, both when creating and
+editing a board — reported by ElectroDrome (bbs.electrodrome.net,
+[#30](https://github.com/anetonline/ANetBBS/issues/30)). Root cause:
+`admin.py`'s `add_board()`/`edit_board()` used `form.min_access_level.data
+or 10` as a "default if the field is blank" shortcut; WTForms'
+`IntegerField` coerces the submitted value to a real Python int before
+that line runs, and Python's `or` treats the integer `0` as falsy, so a
+deliberately-entered `0` was indistinguishable from an empty field. Fixed
+by checking for `None` explicitly, matching the (already-correct) pattern
+used two lines away to populate the edit form in the first place.
+
+A sweep of the rest of the admin/access-level code for the same shape
+found one more reachable instance of the save-path bug (the per-user
+access level field in the sysop's user-management page) and two read-side
+instances of a related but more consequential variant: `echomail.py`'s
+area-visibility check and `games.py`'s game-visibility check both computed
+a user's effective access level with the same `or 10` shortcut, meaning a
+user account genuinely set to access level 0 was treated as level 10 — a
+real level, not a blank field — for every area/game visibility decision,
+rather than their actual, lower level. All four fixed and covered by a new
+regression test file; none were reachable by an ordinary user doing
+ordinary things.
 
 ## v1.1.44 — CI-only test flake fix (October 2026)
 

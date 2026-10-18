@@ -91,7 +91,8 @@ def _accessible_areas_query(network_id):
     q = EchoArea.query.filter_by(
         network_id=network_id, is_active=True, is_subscribed=True)
     if not getattr(current_user, 'is_admin', False):
-        user_lvl = getattr(current_user, 'access_level', 10) or 10
+        _lvl = getattr(current_user, 'access_level', None)
+        user_lvl = _lvl if _lvl is not None else 10
         q = q.filter(EchoArea.is_sysop_only.is_(False))
         q = q.filter(EchoArea.min_access_level <= user_lvl)
     return q
@@ -437,7 +438,8 @@ def compose(area_id, reply_to_id=None):
         original = EchomailMessage.query.filter_by(id=reply_to_id, area_id=area_id).first_or_404()
 
     # Build area choices for the select field — filtered by user access level.
-    user_lvl = getattr(current_user, 'access_level', 10) or 10
+    _lvl = getattr(current_user, 'access_level', None)
+    user_lvl = _lvl if _lvl is not None else 10
     is_admin = getattr(current_user, 'is_admin', False)
     q = EchoArea.query.filter_by(is_active=True, is_subscribed=True)
     if not is_admin:

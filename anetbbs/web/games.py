@@ -40,7 +40,8 @@ def _user_access():
     rather than introduced fresh here.
     """
     if current_user.is_authenticated:
-        return getattr(current_user, 'access_level', 10) or 10
+        lvl = getattr(current_user, 'access_level', None)
+        return lvl if lvl is not None else 10
     return 0
 
 
@@ -76,7 +77,8 @@ def lobby():
     # column to gate on separately.
     user_access = 0
     if current_user.is_authenticated:
-        user_access = getattr(current_user, 'access_level', 10) or 10
+        lvl = getattr(current_user, 'access_level', None)
+        user_access = lvl if lvl is not None else 10
 
     query = (Game.query
              .filter_by(is_active=True, web_enabled=True)

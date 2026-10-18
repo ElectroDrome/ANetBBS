@@ -670,7 +670,8 @@ def add_board():
             description=form.description.data,
             category=(form.category.data or '').strip(),
             order=int(form.order.data),
-            min_access_level=form.min_access_level.data or 10,
+            min_access_level=(form.min_access_level.data
+                               if form.min_access_level.data is not None else 10),
             min_write_level=form.min_write_level.data,
             is_active=form.is_active.data
         )
@@ -694,7 +695,8 @@ def edit_board(board_id):
         board.description = form.description.data
         board.category = (form.category.data or '').strip()
         board.order = int(form.order.data)
-        board.min_access_level = form.min_access_level.data or 10
+        board.min_access_level = (form.min_access_level.data
+                                   if form.min_access_level.data is not None else 10)
         board.min_write_level = form.min_write_level.data
         board.is_active = form.is_active.data
         db.session.commit()
@@ -1847,7 +1849,8 @@ def file_areas_admin():
             fa.is_nodelist_source = bool(request.form.get('is_nodelist_source'))
             fa.nodelist_domain = (request.form.get('nodelist_domain')
                                   or '').strip().lower() or None
-            fa.min_access_level = int(request.form.get('min_access_level') or 10)
+            raw_mal = request.form.get('min_access_level', '').strip()
+            fa.min_access_level = int(raw_mal) if raw_mal.isdigit() else 10
             raw_wl = request.form.get('min_write_level', '').strip()
             fa.min_write_level = int(raw_wl) if raw_wl.isdigit() else None
             fa.freq_enabled = bool(request.form.get('freq_enabled'))
@@ -2310,7 +2313,8 @@ def manage_user(user_id):
             user.email = (request.form.get('email') or user.email)[:120]
             user.display_name = (request.form.get('display_name') or '')[:100] or None
             try:
-                user.access_level = int(request.form.get('access_level') or 10)
+                _raw_al = request.form.get('access_level')
+                user.access_level = int(_raw_al) if _raw_al not in (None, '') else 10
             except ValueError:
                 pass
             # Real gap found in a security/performance audit: same

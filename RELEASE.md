@@ -1,3 +1,7 @@
+# ANetBBS v1.1.45 — Fix: Min Read Level 0 (public access) silently reset to 10 (October 2026)
+
+Setting a board's Min Read Level to 0 (public/everyone) in the Web Admin UI silently saved as 10 (registered) instead, both when creating and editing a board — reported by ElectroDrome (bbs.electrodrome.net). Root cause: the save code used `value or 10` as a "default if blank" shortcut, and Python treats the integer 0 as falsy, so a deliberately-entered 0 was indistinguishable from an empty field. Fixed, and swept the rest of the admin/access-level code for the same shape: a sibling instance in the per-user access level editor had the identical bug, and two read-side checks (which echomail areas and which games a user can see) had a related but more consequential version — a user account genuinely set to access level 0 was being treated as level 10 for visibility purposes rather than their real, lower level. All four fixed; none were reachable by an ordinary user doing ordinary things.
+
 # ANetBBS v1.1.44 — CI-only test flake fix (October 2026)
 
 Three echomail/BinkP test fixtures generated fake FTN node addresses from a suffix letter using Python's built-in `hash()`, which is randomized per process — under some random seeds two different fixtures hashed to the same address and collided against a real uniqueness constraint, failing only on CI runs unlucky enough to start with one of those seeds. Replaced with a deterministic character-sum calculation in all three files. Test-only change; no application code affected.
