@@ -1,11 +1,42 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.46`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.47`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.47 — Five new web themes (October 2026)
+
+Five new full web-UI themes, each built as a distinct visual world
+rather than another palette swap on the existing layout, using the
+same `--theme-stylesheet` override mechanism Command Deck/Hackers/
+Graphite Teal/Ivory Editorial/Retro Web already established (a
+dedicated CSS file per theme restyling the navbar, cards, buttons,
+forms, tables, badges, alerts, footer, and code blocks):
+
+- **Ceefax Teletext** — 1980s broadcast videotext: flat primary-colour
+  blocks, chunky VT323 pixel type, hard right angles everywhere, no
+  gradients.
+- **Brass & Oscilloscope** — a ham-radio control room: brushed walnut
+  panels, brass rivets on the navbar and cards, oscilloscope-green LCD
+  readouts, Oswald + JetBrains Mono.
+- **Mahogany Study** — a gentleman's reading room: deep mahogany,
+  brass nameplates, leather-bound cards, Playfair Display + Lora, with
+  a small illuminated drop-cap on each card's opening line.
+- **Cyanotype Blueprint** — an engineering schematic: Prussian-blue
+  grid paper, white/cyan line-art only, dashed part boxes with corner
+  crosshairs, Big Shoulders Display + Space Mono.
+- **Riso Pop-Art Arcade** — a pinball backglass poster: flat saturated
+  red/blue/yellow on black ink, thick comic outlines with hard offset
+  shadows, Anton + Archivo.
+
+All five pass WCAG AA contrast on body text (checked programmatically,
+matching this project's own stated bar for every built-in theme) and
+seed automatically on next boot — no migration needed. Selectable
+immediately from Profile → Themes. `docs/08-themes.md` and
+`docs/00-overview.md` updated (13 → 18 built-in themes).
 
 ## v1.1.46 — Fix: username lookups were case-sensitive outside of login (October 2026)
 

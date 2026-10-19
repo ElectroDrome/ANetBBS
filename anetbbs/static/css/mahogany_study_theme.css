@@ -1,0 +1,172 @@
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  ANetBBS Mahogany Study Theme                                  ║
+   ║  A gentleman's reading room: deep mahogany, brass nameplates,  ║
+   ║  leather-bound cards, candlelight amber.                       ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+/* ─────────────────────────────────────────
+   ROOT
+───────────────────────────────────────── */
+:root {
+  --ms-brass:   #d4a753;
+  --ms-brass-d: #a8863f;
+  --ms-bg:      #1f120b;
+  --ms-panel:   #2a1810;
+  --ms-text:    #e8d9b8;
+  --ms-muted:   #c9b896;
+  --ms-border:  #4a3a28;
+}
+
+/* ─────────────────────────────────────────
+   BODY
+───────────────────────────────────────── */
+body {
+  background: radial-gradient(ellipse at top, #3b2419, #1f120b 70%) !important;
+  color: var(--ms-text) !important;
+  font-family: 'Lora', serif;
+  line-height: 1.7;
+}
+
+/* ─────────────────────────────────────────
+   SCROLLBAR / SELECTION
+───────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--ms-bg); }
+::-webkit-scrollbar-thumb { background: var(--ms-brass-d); border-radius: 0; border: 2px solid var(--ms-bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--ms-brass); }
+::selection { background: rgba(212, 167, 83, 0.25); color: var(--ms-text); }
+
+/* ─────────────────────────────────────────
+   HEADINGS — illuminated literary serif
+───────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  color: #f0e6cc;
+}
+.navbar-brand { color: #e8c478 !important; letter-spacing: 1px; }
+
+/* First paragraph of a card gets a small illuminated drop cap —
+   a quiet literary flourish, inert on every card without a
+   leading <p>. */
+.card-body > p:first-of-type::first-letter {
+  font-family: 'Playfair Display', serif;
+  font-weight: 800;
+  font-size: 2.1em;
+  float: left;
+  line-height: 0.8;
+  padding-right: 0.08em;
+  color: var(--ms-brass);
+}
+
+/* ─────────────────────────────────────────
+   NAVBAR — brass nameplate, double rule
+───────────────────────────────────────── */
+.navbar {
+  background: var(--ms-panel) !important;
+  border-bottom: 3px double var(--ms-brass-d) !important;
+}
+.navbar .nav-link {
+  color: var(--ms-muted) !important;
+  font-family: 'Playfair Display', serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+}
+.navbar .nav-link:hover, .navbar .nav-link.active { color: var(--ms-brass) !important; }
+
+/* ─────────────────────────────────────────
+   LINKS
+───────────────────────────────────────── */
+a { color: var(--ms-brass); text-decoration: none; }
+a:hover { color: #e8c478; text-decoration: underline; }
+
+/* ─────────────────────────────────────────
+   BUTTONS — wax-seal stamp
+───────────────────────────────────────── */
+.btn-primary {
+  background: var(--ms-brass) !important;
+  border: none !important;
+  color: var(--ms-bg) !important;
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  border-radius: 2px;
+}
+.btn-primary:hover { background: #e8c478 !important; }
+.btn-outline-primary { color: var(--ms-brass) !important; border-color: var(--ms-brass) !important; }
+.btn-outline-primary:hover { background: var(--ms-brass) !important; color: var(--ms-bg) !important; }
+
+/* ─────────────────────────────────────────
+   CARDS — leather-bound volumes
+───────────────────────────────────────── */
+.card {
+  background: var(--ms-panel) !important;
+  border: 1px solid var(--ms-border) !important;
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.card-header {
+  background: rgba(0, 0, 0, 0.25) !important;
+  color: #e8c478 !important;
+  border-bottom: 2px solid var(--ms-brass-d) !important;
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+}
+
+/* ─────────────────────────────────────────
+   FORM CONTROLS — brass-rimmed, ink-well dark
+───────────────────────────────────────── */
+.form-control, .form-select {
+  background: #160d08 !important;
+  border: 1px solid #6b4f28 !important;
+  color: var(--ms-text) !important;
+  font-family: 'Lora', serif;
+  border-radius: 2px;
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--ms-brass) !important;
+  box-shadow: 0 0 0 3px rgba(212, 167, 83, 0.2) !important;
+}
+.form-control::placeholder { color: #8a7355; font-style: italic; }
+label, .form-label { color: var(--ms-muted); font-style: italic; }
+
+/* ─────────────────────────────────────────
+   TABLES — the ledger
+───────────────────────────────────────── */
+.table { color: var(--ms-text); }
+.table > :not(caption) > * > * { border-bottom-color: var(--ms-border); background: transparent; }
+.table thead th { color: var(--ms-brass); font-family: 'Playfair Display', serif; font-weight: 700; }
+.table-hover > tbody > tr:hover > * { background: rgba(212, 167, 83, 0.06) !important; color: var(--ms-text) !important; }
+
+/* ─────────────────────────────────────────
+   BADGES
+───────────────────────────────────────── */
+.badge.bg-primary, .badge.text-bg-primary { background: var(--ms-brass) !important; color: var(--ms-bg) !important; }
+
+/* ─────────────────────────────────────────
+   ALERTS
+───────────────────────────────────────── */
+.alert-success { background: rgba(30, 58, 46, 0.4) !important; border-color: #2d5a44 !important; color: #a8d9b8 !important; }
+.alert-info { background: rgba(212, 167, 83, 0.08) !important; border-color: var(--ms-border) !important; color: var(--ms-text) !important; }
+
+/* ─────────────────────────────────────────
+   FOOTER
+───────────────────────────────────────── */
+footer, .footer {
+  background: var(--ms-panel) !important;
+  border-top: 3px double var(--ms-brass-d) !important;
+  color: var(--ms-muted) !important;
+  font-style: italic;
+}
+
+/* ─────────────────────────────────────────
+   CODE
+───────────────────────────────────────── */
+code, pre {
+  background: #160d08 !important;
+  color: #e8c478 !important;
+  border: 1px solid var(--ms-border);
+  border-radius: 2px;
+}

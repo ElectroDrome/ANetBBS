@@ -1,0 +1,179 @@
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  ANetBBS Brass & Oscilloscope Theme                            ║
+   ║  A ham-radio control room: brushed walnut panels, brass        ║
+   ║  rivets, oscilloscope-green LCD readouts.                      ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ─────────────────────────────────────────
+   ROOT
+───────────────────────────────────────── */
+:root {
+  --bo-brass:    #c9974a;
+  --bo-brass-d:  #a8793a;
+  --bo-scope:    #39ff6a;
+  --bo-panel:    #221d19;
+  --bo-panel-d:  #1a1612;
+  --bo-rivet:    #6b5636;
+  --bo-text:     #ece3cf;
+  --bo-muted:    #a89878;
+  --bo-border:   #4a3c2c;
+}
+
+/* ─────────────────────────────────────────
+   BODY
+───────────────────────────────────────── */
+body {
+  background: linear-gradient(180deg, #2b2520, #221d19) !important;
+  color: var(--bo-text) !important;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ─────────────────────────────────────────
+   SCROLLBAR / SELECTION
+───────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bo-panel-d); }
+::-webkit-scrollbar-thumb { background: var(--bo-brass-d); border-radius: 6px; border: 2px solid var(--bo-panel-d); }
+::-webkit-scrollbar-thumb:hover { background: var(--bo-brass); }
+::selection { background: rgba(201, 151, 74, 0.3); color: var(--bo-text); }
+
+/* ─────────────────────────────────────────
+   HEADINGS — engraved brass-plate lettering
+───────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--bo-brass);
+}
+.navbar-brand { color: var(--bo-brass) !important; letter-spacing: 4px; }
+
+/* ─────────────────────────────────────────
+   NAVBAR — brushed metal rail with corner rivets
+───────────────────────────────────────── */
+.navbar {
+  background: var(--bo-panel-d) !important;
+  border-bottom: 3px solid #0d0a08 !important;
+  box-shadow: inset 0 -2px 0 #3a3025;
+  background-image:
+    radial-gradient(circle at 16px 16px, var(--bo-rivet) 2.5px, transparent 3px),
+    radial-gradient(circle at calc(100% - 16px) 16px, var(--bo-rivet) 2.5px, transparent 3px);
+}
+.navbar .nav-link {
+  color: #d8c9a3 !important;
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.82rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.navbar .nav-link:hover, .navbar .nav-link.active { color: var(--bo-scope) !important; }
+
+/* ─────────────────────────────────────────
+   LINKS
+───────────────────────────────────────── */
+a { color: var(--bo-brass); text-decoration: none; }
+a:hover { color: #e8b86a; }
+
+/* ─────────────────────────────────────────
+   BUTTONS — brass switch-plate
+───────────────────────────────────────── */
+.btn-primary {
+  background: var(--bo-brass) !important;
+  border: none !important;
+  color: var(--bo-panel-d) !important;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  box-shadow: 0 2px 0 var(--bo-brass-d);
+}
+.btn-primary:hover { background: #e8b86a !important; }
+.btn-primary:active { box-shadow: 0 0 0 var(--bo-brass-d) !important; transform: translateY(2px); }
+.btn-outline-primary { color: var(--bo-brass) !important; border-color: var(--bo-brass) !important; }
+.btn-outline-primary:hover { background: var(--bo-brass) !important; color: var(--bo-panel-d) !important; }
+.btn-success { background: var(--bo-scope) !important; border: none !important; color: #0d1a0e !important; }
+
+/* ─────────────────────────────────────────
+   CARDS — instrument modules with brass corner screws
+───────────────────────────────────────── */
+.card {
+  background: var(--bo-panel) !important;
+  border: 1px solid var(--bo-border) !important;
+  border-radius: 6px;
+  background-image:
+    radial-gradient(circle at 10px 10px, var(--bo-rivet) 2px, transparent 2.5px),
+    radial-gradient(circle at calc(100% - 10px) 10px, var(--bo-rivet) 2px, transparent 2.5px),
+    radial-gradient(circle at 10px calc(100% - 10px), var(--bo-rivet) 2px, transparent 2.5px),
+    radial-gradient(circle at calc(100% - 10px) calc(100% - 10px), var(--bo-rivet) 2px, transparent 2.5px);
+}
+.card-header {
+  background: #2a241f !important;
+  color: var(--bo-brass) !important;
+  border-bottom: 1px solid var(--bo-border) !important;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+/* ─────────────────────────────────────────
+   FORM CONTROLS — recessed LCD readouts
+───────────────────────────────────────── */
+.form-control, .form-select {
+  background: #121a14 !important;
+  border: 1px solid var(--bo-border) !important;
+  color: var(--bo-scope) !important;
+  font-family: 'JetBrains Mono', monospace;
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--bo-scope) !important;
+  box-shadow: 0 0 0 2px rgba(57, 255, 106, 0.25) !important;
+}
+.form-control::placeholder { color: #5a8a60; }
+label, .form-label { color: var(--bo-muted); font-size: 0.78rem; letter-spacing: 1px; text-transform: uppercase; }
+
+/* ─────────────────────────────────────────
+   TABLES
+───────────────────────────────────────── */
+.table { color: var(--bo-text); }
+.table > :not(caption) > * > * { border-bottom-color: var(--bo-border); background: transparent; }
+.table thead th { color: var(--bo-brass); font-family: 'Oswald', sans-serif; letter-spacing: 1px; text-transform: uppercase; font-size: 0.78rem; }
+.table-hover > tbody > tr:hover > * { background: rgba(57, 255, 106, 0.08) !important; color: var(--bo-scope) !important; }
+
+/* ─────────────────────────────────────────
+   BADGES
+───────────────────────────────────────── */
+.badge.bg-primary, .badge.text-bg-primary { background: var(--bo-brass) !important; color: var(--bo-panel-d) !important; }
+.badge.bg-success { background: var(--bo-scope) !important; color: #0d1a0e !important; }
+
+/* ─────────────────────────────────────────
+   ALERTS
+───────────────────────────────────────── */
+.alert-success { background: rgba(57, 255, 106, 0.08) !important; border-color: var(--bo-scope) !important; color: var(--bo-scope) !important; }
+.alert-info { background: rgba(201, 151, 74, 0.08) !important; border-color: var(--bo-brass) !important; color: var(--bo-brass) !important; }
+
+/* ─────────────────────────────────────────
+   FOOTER
+───────────────────────────────────────── */
+footer, .footer {
+  background: var(--bo-panel-d) !important;
+  border-top: 1px solid var(--bo-border) !important;
+  color: var(--bo-muted) !important;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 1.5px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+/* ─────────────────────────────────────────
+   CODE
+───────────────────────────────────────── */
+code, pre {
+  background: #121a14 !important;
+  color: var(--bo-scope) !important;
+  border: 1px solid var(--bo-border);
+  border-radius: 4px;
+}

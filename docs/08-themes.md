@@ -1,6 +1,6 @@
 # Themes
 
-ANetBBS ships thirteen hand-picked themes, all WCAG-AA-readable on
+ANetBBS ships eighteen hand-picked themes, all WCAG-AA-readable on
 body text:
 
 - **Modern Dark** (default) — high-contrast Catppuccin-style palette
@@ -26,6 +26,21 @@ body text:
   status-light badges, Sora + IBM Plex Mono. Real mobile treatment,
   not a squeezed-down desktop layout: a slide-in drawer plus a
   thumb-reachable bottom tab bar on phones.
+- **Ceefax Teletext** — 1980s broadcast videotext: flat primary-colour
+  blocks, chunky VT323 pixel type, hard right angles everywhere, no
+  gradients.
+- **Brass & Oscilloscope** — a ham-radio control room: brushed walnut
+  panels, brass rivets on the navbar and cards, oscilloscope-green LCD
+  readouts, Oswald + JetBrains Mono.
+- **Mahogany Study** — a gentleman's reading room: deep mahogany,
+  brass nameplates, leather-bound cards, Playfair Display + Lora, with
+  a small illuminated drop-cap on each card's opening line.
+- **Cyanotype Blueprint** — an engineering schematic: Prussian-blue
+  grid paper, white/cyan line-art only, dashed part boxes with corner
+  crosshairs, Big Shoulders Display + Space Mono.
+- **Riso Pop-Art Arcade** — a pinball backglass poster: flat saturated
+  red/blue/yellow on black ink, thick comic outlines with hard offset
+  shadows, Anton + Archivo.
 
 ## Per-user
 

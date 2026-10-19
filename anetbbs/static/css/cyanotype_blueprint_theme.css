@@ -1,0 +1,192 @@
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  ANetBBS Cyanotype Blueprint Theme                             ║
+   ║  An engineering schematic: Prussian-blue grid paper, white/    ║
+   ║  cyan line-art only, dashed part boxes, drafting type.         ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap');
+
+/* ─────────────────────────────────────────
+   ROOT
+───────────────────────────────────────── */
+:root {
+  --bp-blue:    #0a2a5e;
+  --bp-blue-d:  #061d42;
+  --bp-line:    #8ecbff;
+  --bp-white:   #ffffff;
+  --bp-grid:    rgba(142, 203, 255, 0.08);
+}
+
+/* ─────────────────────────────────────────
+   BODY — grid paper
+───────────────────────────────────────── */
+body {
+  background-color: var(--bp-blue) !important;
+  background-image:
+    repeating-linear-gradient(0deg, var(--bp-grid) 0, var(--bp-grid) 1px, transparent 1px, transparent 40px),
+    repeating-linear-gradient(90deg, var(--bp-grid) 0, var(--bp-grid) 1px, transparent 1px, transparent 40px) !important;
+  color: #ffffff !important;
+  font-family: 'Space Mono', monospace;
+}
+
+/* Hard edges — a schematic never rounds a corner */
+.card, .btn, .form-control, .form-select, .modal-content, .dropdown-menu {
+  border-radius: 0 !important;
+}
+
+/* ─────────────────────────────────────────
+   SCROLLBAR / SELECTION
+───────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bp-blue-d); }
+::-webkit-scrollbar-thumb { background: var(--bp-line); border: 2px solid var(--bp-blue-d); }
+::selection { background: var(--bp-line); color: var(--bp-blue-d); }
+
+/* ─────────────────────────────────────────
+   HEADINGS — engineer's lettering
+───────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+  font-family: 'Big Shoulders Display', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #ffffff;
+}
+.navbar-brand { color: #ffffff !important; letter-spacing: 3px; }
+
+/* ─────────────────────────────────────────
+   NAVBAR
+───────────────────────────────────────── */
+.navbar {
+  background: transparent !important;
+  border-bottom: 2px solid #ffffff !important;
+}
+.navbar .nav-link {
+  color: #ffffff !important;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border: 1px dashed var(--bp-line);
+  margin: 0 3px;
+  padding: 4px 10px !important;
+}
+.navbar .nav-link:hover, .navbar .nav-link.active { color: var(--bp-line) !important; border-color: #ffffff; }
+
+/* ─────────────────────────────────────────
+   LINKS
+───────────────────────────────────────── */
+a { color: #ffffff; text-decoration: underline; text-decoration-style: dashed; }
+a:hover { color: var(--bp-line); }
+
+/* ─────────────────────────────────────────
+   BUTTONS — outline only, no fill
+───────────────────────────────────────── */
+.btn-primary {
+  background: transparent !important;
+  border: 2px solid #ffffff !important;
+  color: #ffffff !important;
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.btn-primary:hover { background: #ffffff !important; color: var(--bp-blue) !important; }
+.btn-outline-primary { color: var(--bp-line) !important; border: 1px dashed var(--bp-line) !important; }
+.btn-outline-primary:hover { background: var(--bp-line) !important; color: var(--bp-blue-d) !important; }
+
+/* ─────────────────────────────────────────
+   CARDS — dashed part boxes with corner crosshairs
+───────────────────────────────────────── */
+.card {
+  background: rgba(13, 52, 112, 0.4) !important;
+  border: 1px dashed var(--bp-line) !important;
+  position: relative;
+}
+.card::before, .card::after {
+  content: '+';
+  position: absolute;
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.card::before { top: -2px; left: -2px; }
+.card::after { bottom: -2px; right: -2px; }
+.card-header {
+  background: transparent !important;
+  color: var(--bp-line) !important;
+  border-bottom: 1px dashed var(--bp-line) !important;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ─────────────────────────────────────────
+   FORM CONTROLS — outline only
+───────────────────────────────────────── */
+.form-control, .form-select {
+  background: transparent !important;
+  border: 1px solid var(--bp-line) !important;
+  color: #ffffff !important;
+  font-family: 'Space Mono', monospace;
+}
+.form-control:focus, .form-select:focus {
+  border-color: #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25) !important;
+}
+.form-control::placeholder { color: #5a8ac0; }
+label, .form-label { color: var(--bp-line); font-size: 0.75rem; letter-spacing: 1px; text-transform: uppercase; }
+
+/* ─────────────────────────────────────────
+   TABLES — bill-of-materials schedule
+───────────────────────────────────────── */
+.table { color: #ffffff; }
+.table > :not(caption) > * > * { border-bottom: 1px dashed #3a5a8a; background: transparent; }
+.table thead th {
+  color: var(--bp-line);
+  font-family: 'Space Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #ffffff !important;
+}
+.table-hover > tbody > tr:hover > * { background: rgba(142, 203, 255, 0.1) !important; color: #ffffff !important; }
+
+/* ─────────────────────────────────────────
+   BADGES
+───────────────────────────────────────── */
+.badge.bg-primary, .badge.text-bg-primary {
+  background: transparent !important;
+  color: #ffffff !important;
+  border: 1px solid #ffffff;
+  border-radius: 0 !important;
+}
+
+/* ─────────────────────────────────────────
+   ALERTS
+───────────────────────────────────────── */
+.alert-success { background: transparent !important; border: 1px solid #8eff9c !important; color: #8eff9c !important; }
+.alert-info { background: transparent !important; border: 1px dashed var(--bp-line) !important; color: var(--bp-line) !important; }
+.alert-danger { background: transparent !important; border: 1px solid #ff8e8e !important; color: #ff8e8e !important; }
+
+/* ─────────────────────────────────────────
+   FOOTER — drafting title block
+───────────────────────────────────────── */
+footer, .footer {
+  background: transparent !important;
+  border-top: 2px solid #ffffff !important;
+  color: var(--bp-line) !important;
+  font-family: 'Space Mono', monospace;
+  letter-spacing: 1px;
+  font-size: 0.75rem;
+}
+
+/* ─────────────────────────────────────────
+   CODE
+───────────────────────────────────────── */
+code, pre {
+  background: transparent !important;
+  color: var(--bp-line) !important;
+  border: 1px dashed var(--bp-line);
+}

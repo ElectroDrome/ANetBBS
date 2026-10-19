@@ -1,0 +1,201 @@
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  ANetBBS Ceefax Teletext Theme                                 ║
+   ║  1980s broadcast videotext: flat primary-colour blocks,        ║
+   ║  chunky pixel-font headings, hard right angles everywhere.     ║
+   ║  No gradients, no rounded corners, no subtlety.                ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* ─────────────────────────────────────────
+   ROOT
+───────────────────────────────────────── */
+:root {
+  --tt-cyan:   #00ffff;
+  --tt-yellow: #ffff00;
+  --tt-green:  #00ff00;
+  --tt-red:    #ff0000;
+  --tt-magenta:#ff00ff;
+  --tt-blue:   #0000aa;
+  --tt-bg:     #000000;
+  --tt-text:   #ffffff;
+}
+
+/* ─────────────────────────────────────────
+   BODY
+───────────────────────────────────────── */
+body {
+  background: #000000 !important;
+  color: #ffffff !important;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Hard right angles everywhere — real teletext never rounds a corner */
+.card, .btn, .form-control, .form-select, .badge, .alert,
+.modal-content, .dropdown-menu, .navbar, .list-group-item {
+  border-radius: 0 !important;
+}
+
+/* ─────────────────────────────────────────
+   CUSTOM SCROLLBAR
+───────────────────────────────────────── */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: #000000; }
+::-webkit-scrollbar-thumb { background: var(--tt-cyan); border: 2px solid #000000; }
+::-webkit-scrollbar-thumb:hover { background: var(--tt-yellow); }
+
+::selection { background: var(--tt-yellow); color: #000000; }
+
+/* ─────────────────────────────────────────
+   HEADINGS — chunky pixel-terminal display face
+───────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+  font-family: 'VT323', monospace;
+  letter-spacing: 1px;
+  color: var(--tt-yellow);
+}
+.navbar-brand {
+  color: var(--tt-yellow) !important;
+  font-size: 1.6rem !important;
+  letter-spacing: 3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .navbar-brand::after { content: '_'; animation: tt-blink 1s steps(1) infinite; color: #ffffff; }
+}
+@keyframes tt-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+/* ─────────────────────────────────────────
+   NAVBAR — blue header bar, FASTEXT-style link colours
+───────────────────────────────────────── */
+.navbar {
+  background: var(--tt-blue) !important;
+  border-bottom: 4px solid #ffffff !important;
+}
+.navbar .nav-link { color: var(--tt-cyan) !important; font-family: 'IBM Plex Mono', monospace; }
+.navbar .nav-link:hover, .navbar .nav-link.active { color: var(--tt-yellow) !important; }
+
+/* ─────────────────────────────────────────
+   LINKS
+───────────────────────────────────────── */
+a { color: var(--tt-cyan); text-decoration: none; }
+a:hover { color: var(--tt-yellow); }
+
+/* ─────────────────────────────────────────
+   BUTTONS — solid colour blocks, thick white outline
+───────────────────────────────────────── */
+.btn-primary {
+  background: var(--tt-yellow) !important;
+  border: 3px solid #ffffff !important;
+  color: #000000 !important;
+  font-family: 'VT323', monospace;
+  font-size: 1.15rem;
+  letter-spacing: 1px;
+}
+.btn-primary:hover { background: #ffffff !important; }
+.btn-success {
+  background: var(--tt-green) !important;
+  border: 3px solid #ffffff !important;
+  color: #000000 !important;
+}
+.btn-danger {
+  background: var(--tt-red) !important;
+  border: 3px solid #ffffff !important;
+  color: #ffffff !important;
+}
+.btn-outline-primary {
+  color: var(--tt-cyan) !important;
+  border: 3px solid var(--tt-cyan) !important;
+}
+.btn-outline-primary:hover { background: var(--tt-cyan) !important; color: #000000 !important; }
+
+/* ─────────────────────────────────────────
+   CARDS — thick colour-coded borders, cycling by position
+───────────────────────────────────────── */
+.card {
+  background: #000000 !important;
+  border: 4px solid var(--tt-green) !important;
+  box-shadow: none !important;
+}
+.card:nth-of-type(5n+2) { border-color: var(--tt-magenta) !important; }
+.card:nth-of-type(5n+3) { border-color: var(--tt-cyan) !important; }
+.card:nth-of-type(5n+4) { border-color: var(--tt-yellow) !important; }
+.card:nth-of-type(5n+5) { border-color: var(--tt-red) !important; }
+.card-header {
+  background: var(--tt-green) !important;
+  color: #000000 !important;
+  font-family: 'VT323', monospace;
+  font-size: 1.3rem;
+  letter-spacing: 1px;
+  border-bottom: 0 !important;
+}
+
+/* ─────────────────────────────────────────
+   FORM CONTROLS
+───────────────────────────────────────── */
+.form-control, .form-select {
+  background: #000000 !important;
+  border: 2px solid var(--tt-cyan) !important;
+  color: #ffffff !important;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--tt-yellow) !important;
+  box-shadow: 0 0 0 2px var(--tt-yellow) !important;
+}
+.form-control::placeholder { color: #559999; }
+
+/* ─────────────────────────────────────────
+   TABLES
+───────────────────────────────────────── */
+.table { color: #ffffff; }
+.table > :not(caption) > * > * { border-bottom-color: var(--tt-cyan); background: transparent; }
+.table thead th { color: var(--tt-yellow); font-family: 'VT323', monospace; font-size: 1.1rem; letter-spacing: 1px; }
+.table-hover > tbody > tr:hover > * { background: #002222 !important; color: var(--tt-yellow) !important; }
+
+/* ─────────────────────────────────────────
+   BADGES / PILLS
+───────────────────────────────────────── */
+.badge.bg-primary, .badge.text-bg-primary { background: var(--tt-yellow) !important; color: #000000 !important; }
+.badge.bg-danger { background: var(--tt-red) !important; }
+.badge.bg-success { background: var(--tt-green) !important; color: #000000 !important; }
+
+/* ─────────────────────────────────────────
+   ALERTS
+───────────────────────────────────────── */
+.alert-success { background: #002200 !important; border: 2px solid var(--tt-green) !important; color: var(--tt-green) !important; }
+.alert-info { background: #002222 !important; border: 2px solid var(--tt-cyan) !important; color: var(--tt-cyan) !important; }
+.alert-danger { background: #220000 !important; border: 2px solid var(--tt-red) !important; color: #ff8888 !important; }
+.alert-warning { background: #222200 !important; border: 2px solid var(--tt-yellow) !important; color: var(--tt-yellow) !important; }
+
+/* ─────────────────────────────────────────
+   DROPDOWNS / MODALS
+───────────────────────────────────────── */
+.dropdown-menu { border: 2px solid var(--tt-cyan) !important; }
+.modal-content { background: #000000 !important; border: 4px solid var(--tt-cyan) !important; color: #ffffff; }
+.modal-header { border-bottom: 2px solid var(--tt-cyan) !important; }
+
+/* ─────────────────────────────────────────
+   FOOTER
+───────────────────────────────────────── */
+footer, .footer {
+  background: var(--tt-blue) !important;
+  border-top: 4px solid #ffffff !important;
+  color: var(--tt-cyan) !important;
+  font-family: 'VT323', monospace;
+  letter-spacing: 1px;
+}
+
+/* ─────────────────────────────────────────
+   CODE
+───────────────────────────────────────── */
+code, pre {
+  background: #001100 !important;
+  color: var(--tt-green) !important;
+  border: 2px solid var(--tt-green);
+}
+
+/* ─────────────────────────────────────────
+   PAGINATION
+───────────────────────────────────────── */
+.page-link { background: #000000 !important; border: 2px solid var(--tt-cyan) !important; color: var(--tt-cyan) !important; border-radius: 0 !important; }
+.page-item.active .page-link { background: var(--tt-yellow) !important; border-color: var(--tt-yellow) !important; color: #000000 !important; }

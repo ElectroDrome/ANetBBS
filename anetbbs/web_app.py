@@ -1859,6 +1859,76 @@ def _create_default_data():
                 ' "--theme-stylesheet": "command-deck"}'
             ),
         },
+        {
+            'name': 'ceefax-teletext',
+            'display_name': 'Ceefax Teletext',
+            'description': '1980s broadcast videotext — flat primary-colour blocks, chunky VT323 pixel type, hard right angles, no gradients.',
+            'is_default': False,
+            'css_variables': (
+                '{"--theme-bg": "#000000", "--theme-bg-dark": "#000000",'
+                ' "--theme-primary": "#00ffff", "--theme-primary-dark": "#00cccc",'
+                ' "--theme-text": "#ffffff", "--theme-text-muted": "#66aaaa",'
+                ' "--theme-card-bg": "#000000", "--theme-input-bg": "#000000",'
+                ' "--theme-input-focus": "#001010", "--theme-border": "#00ffff",'
+                ' "--theme-stylesheet": "ceefax-teletext"}'
+            ),
+        },
+        {
+            'name': 'brass-oscilloscope',
+            'display_name': 'Brass & Oscilloscope',
+            'description': 'A ham-radio control room — brushed walnut panels, brass rivets, oscilloscope-green LCD readouts.',
+            'is_default': False,
+            'css_variables': (
+                '{"--theme-bg": "#2b2520", "--theme-bg-dark": "#1a1612",'
+                ' "--theme-primary": "#c9974a", "--theme-primary-dark": "#a8793a",'
+                ' "--theme-text": "#ece3cf", "--theme-text-muted": "#a89878",'
+                ' "--theme-card-bg": "#221d19", "--theme-input-bg": "#121a14",'
+                ' "--theme-input-focus": "#1a1612", "--theme-border": "#4a3c2c",'
+                ' "--theme-stylesheet": "brass-oscilloscope"}'
+            ),
+        },
+        {
+            'name': 'mahogany-study',
+            'display_name': 'Mahogany Study',
+            'description': "A gentleman's reading room — deep mahogany, brass nameplates, leather-bound cards, candlelight amber.",
+            'is_default': False,
+            'css_variables': (
+                '{"--theme-bg": "#2a1810", "--theme-bg-dark": "#1f120b",'
+                ' "--theme-primary": "#d4a753", "--theme-primary-dark": "#a8863f",'
+                ' "--theme-text": "#e8d9b8", "--theme-text-muted": "#c9b896",'
+                ' "--theme-card-bg": "#1f120b", "--theme-input-bg": "#160d08",'
+                ' "--theme-input-focus": "#221611", "--theme-border": "#4a3a28",'
+                ' "--theme-stylesheet": "mahogany-study"}'
+            ),
+        },
+        {
+            'name': 'cyanotype-blueprint',
+            'display_name': 'Cyanotype Blueprint',
+            'description': 'An engineering schematic — Prussian-blue grid paper, white/cyan line-art only, dashed part boxes, drafting type.',
+            'is_default': False,
+            'css_variables': (
+                '{"--theme-bg": "#0a2a5e", "--theme-bg-dark": "#061d42",'
+                ' "--theme-primary": "#8ecbff", "--theme-primary-dark": "#5aa8e8",'
+                ' "--theme-text": "#ffffff", "--theme-text-muted": "#8ecbff",'
+                ' "--theme-card-bg": "#0d3470", "--theme-input-bg": "#061d42",'
+                ' "--theme-input-focus": "#0a2a5e", "--theme-border": "#ffffff",'
+                ' "--theme-stylesheet": "cyanotype-blueprint"}'
+            ),
+        },
+        {
+            'name': 'riso-pop-art',
+            'display_name': 'Riso Pop-Art Arcade',
+            'description': 'A pinball backglass poster — flat saturated red/blue/yellow on black ink, thick comic outlines, hard offset shadows.',
+            'is_default': False,
+            'css_variables': (
+                '{"--theme-bg": "#161416", "--theme-bg-dark": "#0a090a",'
+                ' "--theme-primary": "#ffce00", "--theme-primary-dark": "#e0b400",'
+                ' "--theme-text": "#f5efe6", "--theme-text-muted": "#d8cfc2",'
+                ' "--theme-card-bg": "#1e1b1d", "--theme-input-bg": "#0a090a",'
+                ' "--theme-input-focus": "#1e1b1d", "--theme-border": "#c81d3f",'
+                ' "--theme-stylesheet": "riso-pop-art"}'
+            ),
+        },
     ]
 
     for theme_data in default_themes:

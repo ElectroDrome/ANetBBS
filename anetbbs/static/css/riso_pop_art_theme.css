@@ -1,0 +1,173 @@
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  ANetBBS Riso Pop-Art Arcade Theme                             ║
+   ║  A pinball backglass poster: flat saturated red/blue/yellow   ║
+   ║  on black ink, thick comic outlines, hard offset shadows.      ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;700;800&display=swap');
+
+/* ─────────────────────────────────────────
+   ROOT
+───────────────────────────────────────── */
+:root {
+  --rp-red:    #c81d3f;
+  --rp-blue:   #1b5fd9;
+  --rp-yellow: #ffce00;
+  --rp-ink:    #161416;
+  --rp-paper:  #f5efe6;
+}
+
+/* ─────────────────────────────────────────
+   BODY — halftone dot texture
+───────────────────────────────────────── */
+body {
+  background-color: var(--rp-ink) !important;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1.4px, transparent 1.6px) !important;
+  background-size: 14px 14px !important;
+  color: var(--rp-paper) !important;
+  font-family: 'Archivo', sans-serif;
+}
+
+/* ─────────────────────────────────────────
+   SCROLLBAR / SELECTION
+───────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--rp-ink); }
+::-webkit-scrollbar-thumb { background: var(--rp-yellow); border: 2px solid var(--rp-ink); }
+::selection { background: var(--rp-yellow); color: var(--rp-ink); }
+
+/* ─────────────────────────────────────────
+   HEADINGS — poster display face
+───────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+  font-family: 'Anton', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--rp-yellow);
+}
+.navbar-brand { color: #ffffff !important; font-size: 1.5rem !important; }
+
+/* ─────────────────────────────────────────
+   NAVBAR — marquee banner
+───────────────────────────────────────── */
+.navbar {
+  background: var(--rp-red) !important;
+  border-bottom: 4px solid var(--rp-ink) !important;
+}
+.navbar .nav-link {
+  color: #ffffff !important;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.navbar .nav-link:hover, .navbar .nav-link.active { color: var(--rp-yellow) !important; }
+
+/* ─────────────────────────────────────────
+   LINKS
+───────────────────────────────────────── */
+a { color: var(--rp-yellow); text-decoration: none; font-weight: 600; }
+a:hover { color: #ffffff; }
+
+/* ─────────────────────────────────────────
+   BUTTONS — comic-block press effect
+───────────────────────────────────────── */
+.btn-primary {
+  background: var(--rp-yellow) !important;
+  border: 3px solid var(--rp-ink) !important;
+  color: var(--rp-ink) !important;
+  font-family: 'Anton', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-radius: 6px;
+  box-shadow: 4px 4px 0 var(--rp-ink);
+  transition: transform 0.06s ease, box-shadow 0.06s ease;
+}
+.btn-primary:hover { background: #ffffff !important; }
+.btn-primary:active { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--rp-ink) !important; }
+.btn-outline-primary { color: var(--rp-yellow) !important; border: 3px solid var(--rp-yellow) !important; border-radius: 6px; }
+.btn-outline-primary:hover { background: var(--rp-yellow) !important; color: var(--rp-ink) !important; }
+.btn-success { background: var(--rp-blue) !important; border: 3px solid var(--rp-ink) !important; color: #ffffff !important; box-shadow: 4px 4px 0 var(--rp-ink); border-radius: 6px; }
+.btn-danger { background: var(--rp-red) !important; border: 3px solid var(--rp-ink) !important; color: #ffffff !important; box-shadow: 4px 4px 0 var(--rp-ink); border-radius: 6px; }
+
+/* ─────────────────────────────────────────
+   CARDS — comic-panel cabinets, hard offset shadow
+───────────────────────────────────────── */
+.card {
+  background: #1e1b1d !important;
+  border: 4px solid var(--rp-ink) !important;
+  border-radius: 8px;
+  box-shadow: 6px 6px 0 var(--rp-ink);
+}
+.card-header {
+  background: var(--rp-yellow) !important;
+  color: var(--rp-ink) !important;
+  border-bottom: 0 !important;
+  font-family: 'Anton', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ─────────────────────────────────────────
+   FORM CONTROLS
+───────────────────────────────────────── */
+.form-control, .form-select {
+  background: #ffffff !important;
+  border: 3px solid var(--rp-ink) !important;
+  color: var(--rp-ink) !important;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  border-radius: 4px;
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--rp-blue) !important;
+  box-shadow: 0 0 0 3px rgba(27, 95, 217, 0.25) !important;
+}
+.form-control::placeholder { color: #8a8278; }
+label, .form-label { color: #ffffff; font-weight: 700; font-size: 0.78rem; letter-spacing: 1px; text-transform: uppercase; }
+
+/* ─────────────────────────────────────────
+   TABLES — high-score board
+───────────────────────────────────────── */
+.table { color: var(--rp-paper); }
+.table > :not(caption) > * > * { border-bottom: 2px solid #3a3026; background: transparent; }
+.table thead th { color: var(--rp-yellow); font-family: 'Anton', sans-serif; letter-spacing: 1px; text-transform: uppercase; font-size: 0.8rem; }
+.table-hover > tbody > tr:hover > * { background: rgba(255, 206, 0, 0.1) !important; color: #ffffff !important; }
+
+/* ─────────────────────────────────────────
+   BADGES — bold pills
+───────────────────────────────────────── */
+.badge.bg-primary, .badge.text-bg-primary { background: var(--rp-yellow) !important; color: var(--rp-ink) !important; font-weight: 800; }
+.badge.bg-danger { background: var(--rp-red) !important; }
+.badge.bg-success { background: var(--rp-blue) !important; }
+
+/* ─────────────────────────────────────────
+   ALERTS
+───────────────────────────────────────── */
+.alert-success { background: rgba(27, 95, 217, 0.18) !important; border: 2px solid var(--rp-blue) !important; color: #cfe0ff !important; }
+.alert-info { background: rgba(255, 206, 0, 0.12) !important; border: 2px solid var(--rp-yellow) !important; color: var(--rp-yellow) !important; }
+.alert-danger { background: rgba(200, 29, 63, 0.18) !important; border: 2px solid var(--rp-red) !important; color: #ffc9d4 !important; }
+
+/* ─────────────────────────────────────────
+   FOOTER
+───────────────────────────────────────── */
+footer, .footer {
+  background: var(--rp-ink) !important;
+  border-top: 4px solid var(--rp-yellow) !important;
+  color: var(--rp-paper) !important;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+/* ─────────────────────────────────────────
+   CODE
+───────────────────────────────────────── */
+code, pre {
+  background: #1e1b1d !important;
+  color: var(--rp-yellow) !important;
+  border: 2px solid var(--rp-ink);
+  border-radius: 4px;
+}
