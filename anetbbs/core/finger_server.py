@@ -51,8 +51,9 @@ def _online_users():
 def _user_info(name):
     """Look up a user by name. Returns dict or None."""
     try:
-        from ..models import User
-        u = User.query.filter_by(username=name).first()
+        from ..models import db, User
+        u = User.query.filter(
+            db.func.lower(User.username) == name.lower()).first()
         if u is None:
             return None
         return {

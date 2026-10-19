@@ -219,7 +219,8 @@ def index():
 @profile_bp.route('/<username>')
 def view_user(username):
     """View a user's profile"""
-    user = User.query.filter_by(username=username).first_or_404()
+    user = User.query.filter(
+        db.func.lower(User.username) == username.lower()).first_or_404()
 
     # Real gap found in a pre-release access-control audit, same class
     # already fixed once in boards.py's search_posts() (see its own

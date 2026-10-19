@@ -920,7 +920,7 @@ def forgot_password():
     form = ForgotPasswordForm()
     if form.validate_on_submit():
         ident = form.identifier.data.strip()
-        user = (User.query.filter_by(username=ident).first()
+        user = (User.query.filter(db.func.lower(User.username) == ident.lower()).first()
                 or User.query.filter_by(email=ident).first())
 
         real_answers = list(user.security_answers) if (user and user.is_active) else []

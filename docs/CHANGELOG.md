@@ -1,11 +1,38 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.45`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.46`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.46 — Fix: username lookups were case-sensitive outside of login (October 2026)
+
+Logging in (both web and terminal) has always matched a username
+case-insensitively, via `web/auth.py`'s `login()` and
+`core/user_manager.py`'s `authenticate()`, both using the
+`func.lower(User.username) == value.lower()` idiom. Several other
+places that look up a user by a typed-in username never adopted that
+same convention and did a plain exact-match query instead — reported
+live: sending a private message to a recipient whose account used mixed
+case (e.g. "StingRay") failed with "user not found" when the sender
+typed it in lowercase ("stingray").
+
+Found and fixed at every site with the same shape, all now using the
+identical case-insensitive pattern login already established:
+
+- `features/bbs_ui.py`'s `_send_pm()` — terminal "Send Private Message"
+- `web/pm.py`'s `compose()` — web PM compose
+- `web/profile.py`'s `view_user()` — `/profile/<username>`
+- `web/gemini.py`'s `view()`/`raw_gemtext()` — `/gemini/<username>[.gmi]`
+- `core/finger_server.py`'s `_user_info()` — finger protocol (port 79)
+- `web/auth.py`'s `forgot_password()` — username-or-email identifier
+- `web/admin.py`'s add/edit-user forms — duplicate-username check
+
+Password matching is untouched and intentionally still exact-case —
+only the username lookup itself was ever the bug. Covered by a new
+regression test file exercising all seven sites.
 
 ## v1.1.45 — Fix: Min Read Level 0 (public access) silently reset to 10 (October 2026)
 

@@ -37,7 +37,8 @@ class AddUserForm(FlaskForm):
     submit = SubmitField('Add User')
 
     def validate_username(self, field):
-        if User.query.filter_by(username=field.data).first():
+        if User.query.filter(
+                db.func.lower(User.username) == field.data.lower()).first():
             raise ValidationError('Username already taken.')
 
     def validate_email(self, field):
@@ -480,7 +481,8 @@ def edit_user(user_id):
 
     if form.validate_on_submit():
         # Check username uniqueness
-        existing = User.query.filter_by(username=form.username.data).first()
+        existing = User.query.filter(
+            db.func.lower(User.username) == form.username.data.lower()).first()
         if existing and existing.id != user.id:
             flash('Username already taken.', 'danger')
             return render_template('admin/user_form.html', form=form, title='Edit User', user=user)

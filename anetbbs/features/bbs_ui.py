@@ -4764,7 +4764,8 @@ async def _send_pm(self):
     if not to_username:
         return
     with _app().app_context():
-        recipient = User.query.filter_by(username=to_username).first()
+        recipient = User.query.filter(
+            db.func.lower(User.username) == to_username.lower()).first()
         if not recipient:
             await self.session.write(f"\r\nNo such user '{to_username}'.\r\n")
             await self.session.read_line("Press Enter...")

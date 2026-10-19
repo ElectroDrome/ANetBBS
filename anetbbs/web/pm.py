@@ -85,7 +85,8 @@ def compose(username=None):
                 pass
 
     if form.validate_on_submit():
-        recipient = User.query.filter_by(username=form.recipient.data).first()
+        recipient = User.query.filter(
+            db.func.lower(User.username) == form.recipient.data.lower()).first()
         if not recipient:
             flash('User not found.', 'danger')
             from ..models import get_active_taglines

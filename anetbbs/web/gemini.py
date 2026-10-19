@@ -83,7 +83,8 @@ def index():
 @gemini_bp.route('/<username>')
 def view(username):
     """View one user's capsule — rendered as gemtext-light HTML."""
-    user = User.query.filter_by(username=username).first_or_404()
+    user = User.query.filter(
+        db.func.lower(User.username) == username.lower()).first_or_404()
     cap = GeminiCapsule.query.filter_by(user_id=user.id).first()
     if cap is None or not cap.is_published:
         abort(404)
@@ -103,7 +104,8 @@ def view(username):
 @gemini_bp.route('/<username>.gmi')
 def raw_gemtext(username):
     """Serve the capsule as raw gemtext (text/gemini)."""
-    user = User.query.filter_by(username=username).first_or_404()
+    user = User.query.filter(
+        db.func.lower(User.username) == username.lower()).first_or_404()
     cap = GeminiCapsule.query.filter_by(user_id=user.id).first()
     if cap is None or not cap.is_published:
         abort(404)
