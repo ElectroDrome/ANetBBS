@@ -892,14 +892,48 @@ async def _pm_compose(session, reply_to_username=None, reply_subject=None):
 # ─── File areas (browse only, Phase 1) ──────────────────────────────────
 
 async def _files_menu(session):
+    """Category-group collapsing (as_submenu=True): a category with that
+    flag shows ONE row ("Category -> (N areas)"); picking it opens a
+    second paginated picker scoped to just that category's areas --
+    same two-level drill-down shape as the ANSI lightbar's own
+    _file_area_category_browse(). A category not marked as_submenu (or
+    an area with no category) still lists its areas inline.
+
+    Position is driven by a COMBINED, number-sorted domain (each inline
+    area's own sort_order, or each submenu category's own sort_order
+    for its one stand-in row) -- NOT by where a category's first member
+    area happens to fall in a flat walk. Same real bug and same fix as
+    the ANSI lightbar's own list_files() -- see that function's own
+    comment for the full writeup."""
     level = _access_level(session)
     while True:
         with _app_ctx():
-            from ..models import FileArea
+            from ..models import FileArea, FileAreaCategory
             areas = (FileArea.query.filter_by(is_active=True, is_sysop_only=False)
                     .filter(FileArea.min_access_level <= level)
-                    .order_by(FileArea.name).all())
-            rows = [(a.id, a.name) for a in areas]
+                    .order_by(FileArea.sort_order, FileArea.name).all())
+            cat_rows = FileAreaCategory.query.all()
+            cat_names = {c.slug: c.name for c in cat_rows}
+            cat_as_submenu = {c.slug: bool(c.as_submenu) for c in cat_rows}
+            cat_sort_order = {c.slug: (c.sort_order or 0) for c in cat_rows}
+
+            seen_submenu_slugs = set()
+            _combined = []
+            for a in areas:
+                slug = a.category or 'other'
+                if cat_as_submenu.get(slug):
+                    if slug in seen_submenu_slugs:
+                        continue
+                    seen_submenu_slugs.add(slug)
+                    cat_areas = [x for x in areas if (x.category or 'other') == slug]
+                    label = f"{cat_names.get(slug, slug.capitalize())} -> ({len(cat_areas)} areas)"
+                    _combined.append((cat_sort_order.get(slug, 0),
+                                      (None, label, 'cat', slug, cat_areas)))
+                else:
+                    _combined.append((a.sort_order or 0,
+                                      (a.id, a.name, 'area', None, None)))
+            _combined.sort(key=lambda t: t[0])
+            rows = [row for _, row in _combined]
 
         if not rows:
             await _header(session, 'File Areas')
@@ -910,6 +944,29 @@ async def _files_menu(session):
         name_w = max(10, _width(session) - 7)
         pick = await _paginated_pick(
             session, 'File Areas', rows,
+            lambda i, row: f'{i:>3}. {_truncate_words(row[1], name_w)}', 'select')
+        if pick == 'Q':
+            return
+        if isinstance(pick, int):
+            row = rows[pick - 1]
+            if row[2] == 'cat':
+                await _files_category_browse(session, row[1].split(' -> ')[0], row[4])
+            else:
+                await _files_browse(session, row[0], row[1])
+
+
+async def _files_category_browse(session, cat_label, cat_areas):
+    """Second-level picker for a single as_submenu=True file-area
+    category -- same shape as _files_menu()'s own top-level picker,
+    scoped to just this category's areas. 'Q' returns to the top-level
+    area list for free (a plain call from _files_menu()'s own while
+    loop, same convention _files_browse() already establishes for its
+    own drill-down)."""
+    while True:
+        rows = [(a.id, a.name) for a in cat_areas]
+        name_w = max(10, _width(session) - 7)
+        pick = await _paginated_pick(
+            session, f'Area: {cat_label}', rows,
             lambda i, row: f'{i:>3}. {_truncate_words(row[1], name_w)}', 'select')
         if pick == 'Q':
             return

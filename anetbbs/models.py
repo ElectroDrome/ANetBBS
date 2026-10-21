@@ -1729,6 +1729,15 @@ class FileArea(db.Model):
     freq_enabled = db.Column(db.Boolean, default=False)
     freq_password = db.Column(db.String(80))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Grouping + stable numbering, same shape as Game.category/sort_order
+    # (features/games.py's own GameManager.show_door_menu() -- a plain
+    # string bucket matching FileAreaCategory.slug below, not an FK, same
+    # established convention Game.category already uses). Added because
+    # file areas had NO grouping concept at all until a sysop pointed out
+    # this exact gap ("file areas - i just realized we dont have
+    # sub-menus").
+    category = db.Column(db.String(50), default='other')
+    sort_order = db.Column(db.Integer, default=0)
 
     network = db.relationship('EchomailNetwork',
                               backref=db.backref('file_areas', lazy='dynamic',
@@ -1736,6 +1745,27 @@ class FileArea(db.Model):
 
     def __repr__(self):
         return f'<FileArea {self.tag}>'
+
+
+class FileAreaCategory(db.Model):
+    """Sysop-managed file-area categories (e.g. Games, Utils, Mags) --
+    directly mirrors GameCategory above (same name/slug/sort_order/
+    as_submenu shape, same drag-and-drop admin + stable-numbering
+    terminal treatment), adapted for file areas instead of doors."""
+    __tablename__ = 'file_area_categories'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    slug = db.Column(db.String(80), unique=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=0)
+    # Off by default -- same meaning as GameCategory.as_submenu: when on,
+    # the file-area list shows this category as a single selectable line
+    # (picking it opens a second-level menu of just that category's
+    # areas) instead of expanding its areas inline under a header.
+    as_submenu = db.Column(db.Boolean, nullable=False, default=False)
+
+    def __repr__(self):
+        return f'<FileAreaCategory {self.name}>'
 
 
 class ShoutboxPost(db.Model):
@@ -4249,3 +4279,209 @@ class DarkForcesSave(db.Model):
 
     def __repr__(self):
         return f'<DarkForcesSave user={self.user_id} slot={self.slot} level={self.level_name}>'
+
+
+# ---------------------------------------------------------------------------
+# The Shattered Realm (native MUD door, anetbbs/features/mud/) -- Phase 5 of
+# the door-games roadmap. See docs/40-mud.md for the full design writeup.
+# ---------------------------------------------------------------------------
+
+class MudMobTemplate(db.Model):
+    """Admin-editable monster catalog (Admin -> MUD -> Mobs). A
+    MudRoom's own mob_template_id points here -- combat.py instances a
+    fresh copy of these stats per player encounter (mobs are instanced
+    per player, not a single shared-HP mob synced across every
+    process -- see docs/40-mud.md's "Multiplayer" section for why)."""
+    __tablename__ = 'mud_mob_templates'
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    level = db.Column(db.Integer, nullable=False, default=1)
+    hp = db.Column(db.Integer, nullable=False, default=10)
+    attack = db.Column(db.Integer, nullable=False, default=3)
+    defense = db.Column(db.Integer, nullable=False, default=0)
+    xp_reward = db.Column(db.Integer, nullable=False, default=10)
+    gold_reward = db.Column(db.Integer, nullable=False, default=5)
+
+    def __repr__(self):
+        return f'<MudMobTemplate {self.slug}>'
+
+
+class MudItemTemplate(db.Model):
+    """Admin-editable item catalog (Admin -> MUD -> Items). A
+    MudCharacter's own inventory_json references rows here by slug
+    (not by id -- a slug survives a reseed/reimport, a raw id doesn't).
+    """
+    __tablename__ = 'mud_item_templates'
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    item_type = db.Column(db.String(20), nullable=False, default='misc')
+    # weapon/armor: db.String(20) in ('weapon', 'armor', 'consumable',
+    # 'quest', 'misc') -- not an Enum column, matching Game.game_type's
+    # own plain-string-discriminator convention elsewhere in this file.
+    attack_bonus = db.Column(db.Integer, nullable=False, default=0)
+    defense_bonus = db.Column(db.Integer, nullable=False, default=0)
+    heal_amount = db.Column(db.Integer, nullable=False, default=0)
+    value = db.Column(db.Integer, nullable=False, default=0)
+    is_shop_stock = db.Column(db.Boolean, nullable=False, default=False)
+    # Nullable -- blank means any class can wear/wield it. One of
+    # anetbbs/features/mud/classes.py's CLASS_SLUGS, kept as a plain
+    # string (not a FK) since classes are code-defined, not an
+    # admin-editable table -- see that module's own docstring for why.
+    required_class = db.Column(db.String(20), nullable=True)
+
+    def __repr__(self):
+        return f'<MudItemTemplate {self.slug}>'
+
+
+class MudRoom(db.Model):
+    """One room in the world graph. `mob_template_id` is the room's
+    own wandering-mob spawn, if any -- nullable (a safe room, e.g. the
+    starting village, has none). Exits are a separate table
+    (MudExit) rather than fixed direction columns here, so a sysop can
+    add rooms/connections through Admin -> MUD -> Rooms without a
+    schema change."""
+    __tablename__ = 'mud_rooms'
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(80), unique=True, nullable=False)
+    zone = db.Column(db.String(50), nullable=False, default='village')
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    mob_template_id = db.Column(db.Integer,
+                                db.ForeignKey('mud_mob_templates.id'),
+                                nullable=True, index=True)
+    # A sysop-designatable special room feature -- 'shop'/'healer'/None
+    # -- rather than hardcoding specific room slugs in game code, so
+    # Admin -> MUD -> Rooms can relocate or add a shop/healer without a
+    # code change (matches this codebase's broader data-driven
+    # philosophy: menus/ANSI art/themes are all admin-editable, not
+    # hardcoded either).
+    feature = db.Column(db.String(20), nullable=True)
+
+    mob_template = db.relationship('MudMobTemplate')
+
+    def __repr__(self):
+        return f'<MudRoom {self.slug}>'
+
+
+class MudExit(db.Model):
+    """One directional connection: `room_id` --<direction>--> `target_
+    room_id`. Not auto-bidirectional -- a sysop building a one-way exit
+    (a drop-down trapdoor, a locked gate) is a normal, valid MUD-
+    building pattern, so a two-way corridor needs two MudExit rows, one
+    each direction, same as any real MUD area-building tool."""
+    __tablename__ = 'mud_exits'
+    __table_args__ = (
+        db.UniqueConstraint('room_id', 'direction', name='uq_mud_exit_room_direction'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    room_id = db.Column(db.Integer, db.ForeignKey('mud_rooms.id'),
+                        nullable=False, index=True)
+    direction = db.Column(db.String(20), nullable=False)
+    target_room_id = db.Column(db.Integer, db.ForeignKey('mud_rooms.id'),
+                               nullable=False, index=True)
+
+    room = db.relationship('MudRoom', foreign_keys=[room_id],
+                           backref=db.backref('exits', lazy='dynamic'))
+    target_room = db.relationship('MudRoom', foreign_keys=[target_room_id])
+
+    def __repr__(self):
+        return f'<MudExit {self.direction} from room={self.room_id} to room={self.target_room_id}>'
+
+
+class MudQuestTemplate(db.Model):
+    """Admin-editable quest catalog (Admin -> MUD -> Quests). A quest
+    is given by whichever room has `giver_room_id` pointing at it (that
+    room's own description/the `quests`/`accept` verbs surface it to a
+    player standing there), and is completed by defeating
+    `target_mob_slug` (anetbbs.models.MudMobTemplate.slug) anywhere in
+    the world `target_count` times -- not scoped to one specific room,
+    since a mob template is itself shared across every room that
+    spawns it (a more flexible design than per-room kill tracking)."""
+    __tablename__ = 'mud_quest_templates'
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    giver_room_id = db.Column(db.Integer, db.ForeignKey('mud_rooms.id'),
+                              nullable=False, index=True)
+    target_mob_slug = db.Column(db.String(80), nullable=False)
+    target_count = db.Column(db.Integer, nullable=False, default=1)
+    reward_xp = db.Column(db.Integer, nullable=False, default=0)
+    reward_gold = db.Column(db.Integer, nullable=False, default=0)
+    reward_item_slug = db.Column(db.String(80), nullable=True)
+
+    giver_room = db.relationship('MudRoom')
+
+    def __repr__(self):
+        return f'<MudQuestTemplate {self.slug}>'
+
+
+class MudCharacter(db.Model):
+    """One persistent character per account -- the MUD-genre
+    convention (a character is a persistent identity, not a save slot
+    the way MeadowlarkSave/DarkForcesSave's multi-slot pattern is for a
+    single-player game), hence `user_id` is UNIQUE here rather than
+    paired with a slot number.
+
+    inventory_json is a compact JSON list (`[{"item_slug":str,
+    "qty":int,"equipped":bool}, ...]`) referencing MudItemTemplate.slug
+    -- a real join table isn't needed for a small per-character carry
+    list, matching this codebase's own precedent of a JSON blob column
+    for save-shaped state (MeadowlarkSave/DarkForcesSave) while keeping
+    the admin-editable CATALOG itself (MudItemTemplate) a real table.
+
+    quests_json is the same JSON-blob-for-per-character-progress
+    pattern applied to quests: `[{"quest_slug":str, "progress":int,
+    "completed":bool, "turned_in":bool}, ...]`, referencing
+    MudQuestTemplate.slug -- the quest CATALOG is a real table, the
+    per-character progress tracking isn't, same reasoning as inventory.
+
+    char_class is one of anetbbs.features.mud.classes.CLASS_SLUGS,
+    chosen once at character creation and permanent -- classes are
+    code-defined (base stats, per-level growth, abilities), not an
+    admin-editable table, since unlike rooms/items/mobs a class's
+    actual BEHAVIOR (what its abilities do) is logic, not a flat stat
+    block. mana/mana_max are 0 for a class with no spells (Warrior/
+    Rogue) -- simplest shared schema, unused columns cost nothing.
+    """
+    __tablename__ = 'mud_characters'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer,
+                        db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False, unique=True, index=True)
+    name = db.Column(db.String(50), nullable=False)
+    char_class = db.Column(db.String(20), nullable=False, default='warrior')
+    level = db.Column(db.Integer, nullable=False, default=1)
+    xp = db.Column(db.Integer, nullable=False, default=0)
+    xp_next = db.Column(db.Integer, nullable=False, default=20)
+    hp = db.Column(db.Integer, nullable=False, default=20)
+    hp_max = db.Column(db.Integer, nullable=False, default=20)
+    mana = db.Column(db.Integer, nullable=False, default=0)
+    mana_max = db.Column(db.Integer, nullable=False, default=0)
+    attack = db.Column(db.Integer, nullable=False, default=4)
+    defense = db.Column(db.Integer, nullable=False, default=1)
+    gold = db.Column(db.Integer, nullable=False, default=10)
+    current_room_id = db.Column(db.Integer, db.ForeignKey('mud_rooms.id'),
+                                nullable=True, index=True)
+    inventory_json = db.Column(db.Text, nullable=False, default='[]')
+    quests_json = db.Column(db.Text, nullable=False, default='[]')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_played_at = db.Column(db.DateTime, default=datetime.utcnow,
+                               onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref(
+        'mud_character', uselist=False))
+    current_room = db.relationship('MudRoom')
+
+    def __repr__(self):
+        return f'<MudCharacter {self.name} user={self.user_id} lvl={self.level}>'

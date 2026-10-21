@@ -18,7 +18,6 @@ the Delete button already worked -- only whichever button was actually
 clicked submits its own action value now.
 """
 import os
-import re
 import sys
 import unittest
 from pathlib import Path
@@ -83,13 +82,18 @@ class FileAreaDeleteBugTests(unittest.TestCase):
         Delete to silently behave like Save. (The separate Create-area
         form at the top of the page legitimately has its own single
         hidden action="create" field with no competing button -- this
-        check is scoped to the per-area block, not the whole file.)"""
+        check is scoped to the per-area block, not the whole file.)
+
+        The per-area loop is now nested inside a category grouping (see
+        docs/07-file-areas.md's "Categories and submenu sections"), with
+        another {% for %}/{% endfor %} (the category <select> options)
+        nested INSIDE the per-area form itself -- so the first bare
+        {% endfor %} after the loop marker is no longer this form's own
+        closing tag. Anchor on the real per-area <form> tag (unique,
+        real HTML) and its own closing </form> instead."""
         html = TEMPLATE_PATH.read_text()
-        # Isolate the per-area form: starts at the loop's <form ...>, ends
-        # at its closing </form> (the first one, since each area repeats
-        # the same structure inside the {% for fa in areas %} block).
-        start = html.index('{% for fa in areas %}')
-        end = html.index('{% endfor %}', start)
+        start = html.index('<form method="post" class="border-bottom')
+        end = html.index('</form>', start)
         per_area_block = html[start:end]
 
         self.assertNotIn('type="hidden" name="action"', per_area_block,

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}MUD Rooms — Admin{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3><i class="bi bi-door-open"></i> Rooms</h3>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('mud_admin.new_room') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle"></i> Add Room</a>
+    <a href="{{ url_for('mud_admin.index') }}" class="btn btn-primary btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+  </div>
+</div>
+<table class="table table-striped table-sm">
+  <thead><tr><th>Zone</th><th>Name</th><th>Slug</th><th>Mob</th><th>Feature</th><th>Exits</th><th></th></tr></thead>
+  <tbody>
+    {% for room in rooms %}
+    <tr>
+      <td>{{ room.zone }}</td>
+      <td>{{ room.name }}</td>
+      <td><code>{{ room.slug }}</code></td>
+      <td>{{ room.mob_template.name if room.mob_template else '' }}</td>
+      <td>{{ room.feature or '' }}</td>
+      <td>{{ room.exits.count() }}</td>
+      <td>
+        <a href="{{ url_for('mud_admin.edit_room', room_id=room.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-pencil"></i></a>
+        <form method="post" action="{{ url_for('mud_admin.delete_room', room_id=room.id) }}" style="display:inline;"
+              onsubmit="return confirm('Delete {{ room.name }} and its exits?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm" style="background:#330000;border:1px solid #ff0000;color:#ff0000;"><i class="bi bi-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="text-center" style="color:#007700;">No rooms yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

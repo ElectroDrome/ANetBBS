@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 
 from flask import (Blueprint, render_template, redirect, url_for,
-                   flash, current_app, request)
+                   flash, current_app, request, jsonify)
 from flask_login import login_required
 from flask_wtf import FlaskForm
 from wtforms import (StringField, TextAreaField, SelectField, IntegerField,
@@ -218,7 +218,222 @@ def dashboard():
 @_admin_required
 def list_games():
     games = Game.query.order_by(Game.sort_order, Game.name).all()
-    return render_template('games/admin/list.html', games=games)
+    categories = GameCategory.query.order_by(GameCategory.sort_order, GameCategory.name).all()
+    grouped = {}
+    for g in games:
+        grouped.setdefault(g.category or 'other', []).append(g)
+    cat_names = {c.slug: c.name for c in categories}
+    cat_as_submenu = {c.slug: bool(c.as_submenu) for c in categories}
+    # Preserve first-seen order of categories as they appear among the
+    # already sort_order-ordered games, same convention
+    # features/games.py's terminal menu uses, so the admin list visually
+    # matches what a user actually sees.
+    cat_order = []
+    seen = set()
+    for g in games:
+        slug = g.category or 'other'
+        if slug not in seen:
+            seen.add(slug)
+            cat_order.append(slug)
+    return render_template('games/admin/list.html', games=games,
+                           grouped=grouped, cat_names=cat_names,
+                           cat_as_submenu=cat_as_submenu, cat_order=cat_order)
+
+
+@games_admin_bp.route('/reorder', methods=['POST'])
+@login_required
+@_admin_required
+def reorder_games():
+    """Bulk reorder, posted by the admin list page's drag-and-drop UI --
+    a JSON body `{"order": [game_id, game_id, ...]}` in the new desired
+    order. Writes back GAPPED sort_order values (10, 20, 30, ...), not
+    consecutive ones, specifically so a sysop can insert a new door
+    later (sort_order=15) between two existing ones without renumbering
+    anything else -- the exact same prevention this whole fix is about.
+    Only touches games actually present in `order`; any other game's
+    sort_order is left alone (a drag-and-drop reorder within one
+    category shouldn't renumber a different category's games)."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        order = [int(gid) for gid in (payload.get('order') or [])]
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'invalid order payload'}), 400
+    if not order:
+        return jsonify({'ok': False, 'error': 'empty order'}), 400
+    games_by_id = {g.id: g for g in Game.query.filter(Game.id.in_(order)).all()}
+    for i, gid in enumerate(order):
+        g = games_by_id.get(gid)
+        if g is not None:
+            g.sort_order = (i + 1) * 10
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@games_admin_bp.route('/categories/reorder', methods=['POST'])
+@login_required
+@_admin_required
+def reorder_categories():
+    """Bulk reorder, posted by the admin categories page's drag-and-drop
+    UI, scoped to GameCategory.sort_order.
+
+    Real bug found live: this used to assign a sequential run to EVERY
+    dragged category, submenu or not -- but an as_submenu=False
+    (inline) category's own sort_order is never read for anything in
+    the terminal door menu (features/games.py's top_level_order
+    construction only reads it for as_submenu=True stand-ins; an
+    inline category's position there is driven entirely by its own
+    GAMES' sort_order instead). Mixing inline categories into this same
+    sequential run just "steals" numbers from the submenu categories
+    that actually show/compete for a typed number, producing a
+    confusing, gap-riddled sequence for exactly the entries a sysop is
+    looking at. Fixed: only as_submenu=True categories that currently
+    show a numbered line at all (at least one visible active game --
+    an empty category would otherwise waste a number the same way an
+    inline one used to) consume a slot in the sequence.
+
+    Real live feedback across several rounds ("numbers should start at
+    1"): unlike games (whose own numbers can be hardcoded into a
+    sysop's hand-drawn ANSI door-menu art -- see renumber_games()'s own
+    docstring for why THAT stays gapped), a category's number is just a
+    short navigational list label, so this assigns a plain 1, 2, 3, ...
+    run -- matches resolve_sort_order_collisions()'s own automatic
+    every-boot resequencing of categories, which this endpoint gives
+    the sysop an immediate way to trigger without waiting for a
+    restart."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        order = [int(cid) for cid in (payload.get('order') or [])]
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'invalid order payload'}), 400
+    if not order:
+        return jsonify({'ok': False, 'error': 'empty order'}), 400
+    cats_by_id = {c.id: c for c in GameCategory.query.filter(GameCategory.id.in_(order)).all()}
+    active_cat_slugs = {g.category for g in Game.query.filter_by(is_active=True).all()}
+    next_num = 0
+    for cid in order:
+        c = cats_by_id.get(cid)
+        if c is None or not c.as_submenu or c.slug not in active_cat_slugs:
+            continue
+        next_num += 1
+        c.sort_order = next_num
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@games_admin_bp.route('/renumber', methods=['POST'])
+@login_required
+@_admin_required
+def renumber_games():
+    """One-click clean renumber for ALL games (or, with a `category`
+    form field, just one category's games -- real bug reported live: a
+    bulk-imported network category (17 games, all left at the
+    Game.sort_order column's own default of 0) showed EVERY entry as
+    "0." in its submenu and only the first was actually reachable by
+    number at all, "first claimant wins" on the rest -- a sysop fixing
+    just that one category shouldn't have every OTHER category's
+    carefully-set custom numbers reshuffled along with it), in their
+    current effective order (Game.sort_order, Game.name -- the same
+    ordering every other query in this codebase already uses). For when
+    sort_order values have drifted or collided and a sysop wants a
+    fresh gapped sequence (10, 20, 30, ...) rather than managing gaps
+    by hand."""
+    category = (request.form.get('category') or '').strip()
+    q = Game.query
+    if category:
+        q = q.filter_by(category=category)
+    games = q.order_by(Game.sort_order, Game.name).all()
+    for i, g in enumerate(games):
+        g.sort_order = (i + 1) * 10
+    db.session.commit()
+    scope = f'"{category}"' if category else 'all'
+    flash(f'Renumbered {len(games)} game(s) in {scope} to a clean 10/20/30/... sequence.',
+         'success')
+    return redirect(url_for('games_admin.list_games'))
+
+
+@games_admin_bp.route('/categories/renumber', methods=['POST'])
+@login_required
+@_admin_required
+def renumber_categories():
+    """Same clean-renumber convenience as renumber_games(), scoped to
+    GameCategory.sort_order -- which matters because an as_submenu=True
+    category's own sort_order is what's actually DISPLAYED as its menu
+    number at the top level (see features/games.py), sharing that same
+    number space with ordinary (non-submenu) games.
+
+    Only as_submenu=True categories that currently show a numbered line
+    at all (at least one visible active game) are actually renumbered
+    -- an inline or empty category's own sort_order is never read for
+    anything in the terminal menu (see reorder_categories()'s own
+    docstring for the full reasoning), so including it here would just
+    burn a number out of the sequence that matters for no visible
+    effect. Assigns a plain 1, 2, 3, ... run, not a gapped one -- see
+    reorder_categories()'s own docstring for why categories don't need
+    gaps the way games' own hardcoded-into-ANSI-art numbers do."""
+    active_cat_slugs = {g.category for g in Game.query.filter_by(is_active=True).all()}
+    cats = [c for c in GameCategory.query.filter_by(as_submenu=True)
+            .order_by(GameCategory.sort_order, GameCategory.name).all()
+            if c.slug in active_cat_slugs]
+    for i, c in enumerate(cats, start=1):
+        c.sort_order = i
+    db.session.commit()
+    flash(f'Renumbered {len(cats)} submenu categor{"y" if len(cats) == 1 else "ies"}.', 'success')
+    return redirect(url_for('games_admin.list_categories'))
+
+
+def _sort_order_collision_warning(game):
+    """Returns a warning string if `game`'s sort_order collides with
+    another entry that would show the SAME displayed menu number in
+    features/games.py's terminal door menu -- None if clear. This
+    mirrors that module's actual numbering domains precisely:
+
+    - A game inside an as_submenu=True category only ever competes with
+      OTHER games in that same category (that category's own internal
+      submenu page uses each game's sort_order as its number).
+    - A game NOT in an as_submenu category appears in the top-level
+      list, which also shows every as_submenu category's own
+      GameCategory.sort_order as that category's stand-in entry -- so
+      it competes with both other top-level games AND every submenu
+      category's sort_order.
+
+    Call this AFTER the game has been committed (so `game.id` is
+    populated) -- it's advisory only (flash a warning), never blocks
+    the save, matching this codebase's existing fail-open admin-UX
+    conventions elsewhere in this same file."""
+    cat = GameCategory.query.filter_by(slug=game.category).first()
+    if cat is not None and cat.as_submenu:
+        dupe = (Game.query
+                .filter(Game.category == game.category,
+                        Game.sort_order == game.sort_order,
+                        Game.id != game.id,
+                        Game.is_active.is_(True))
+                .first())
+        if dupe:
+            return (f'Sort Order {game.sort_order} is already used by '
+                    f'"{dupe.name}" in this category -- one of them '
+                    f"won't be reachable by its number until this is fixed.")
+        return None
+
+    submenu_cat_slugs = [c.slug for c in
+                        GameCategory.query.filter_by(as_submenu=True).all()]
+    dupe = (Game.query
+            .filter(Game.sort_order == game.sort_order,
+                    Game.id != game.id,
+                    Game.is_active.is_(True),
+                    ~Game.category.in_(submenu_cat_slugs or ['']))
+            .first())
+    if dupe:
+        return (f'Sort Order {game.sort_order} is already used by '
+                f'"{dupe.name}" -- one of them won\'t be reachable by '
+                f'its number until this is fixed.')
+    dupe_cat = (GameCategory.query
+                .filter_by(as_submenu=True, sort_order=game.sort_order)
+                .first())
+    if dupe_cat:
+        return (f'Sort Order {game.sort_order} is already used by the '
+                f'"{dupe_cat.name}" category section -- one of them '
+                f"won't be reachable by its number until this is fixed.")
+    return None
 
 
 @games_admin_bp.route('/add', methods=['GET', 'POST'])
@@ -246,6 +461,9 @@ def add_game():
                  f'Pick a different slug and try again.', 'danger')
             return render_template('games/admin/form.html', form=form, game=None, msgbase_area_groups=_msgbase_area_groups())
         flash(f'Game "{game.name}" added successfully.', 'success')
+        warning = _sort_order_collision_warning(game)
+        if warning:
+            flash(warning, 'warning')
         return redirect(url_for('games_admin.list_games'))
     return render_template('games/admin/form.html', form=form, game=None, msgbase_area_groups=_msgbase_area_groups())
 
@@ -268,6 +486,9 @@ def edit_game(game_id):
                  f'by a different game. Pick a different slug and try again.', 'danger')
             return render_template('games/admin/form.html', form=form, game=game, msgbase_area_groups=_msgbase_area_groups())
         flash(f'Game "{game.name}" updated.', 'success')
+        warning = _sort_order_collision_warning(game)
+        if warning:
+            flash(warning, 'warning')
         return redirect(url_for('games_admin.list_games'))
     return render_template('games/admin/form.html', form=form, game=game, msgbase_area_groups=_msgbase_area_groups())
 

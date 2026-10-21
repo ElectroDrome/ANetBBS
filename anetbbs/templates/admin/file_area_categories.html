@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}File Area Categories — Admin — {{ config.BBS_NAME }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-tags"></i> File Area Categories</h3>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.add_file_area_category') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle"></i> Add Category
+        </a>
+        <form method="post" action="{{ url_for('admin.renumber_file_area_categories') }}" style="display:inline;"
+              onsubmit="return confirm('Renumber every category to a clean 1/2/3/... sequence?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-primary" title="Auto-renumber all categories">
+                <i class="bi bi-sort-numeric-down"></i> Renumber
+            </button>
+        </form>
+        <a href="{{ url_for('admin.file_areas_admin') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-arrow-left"></i> File Areas
+        </a>
+    </div>
+</div>
+
+<p class="small text-muted">
+    <i class="bi bi-info-circle"></i>
+    For a category shown as a <strong>submenu section</strong>, <code>Sort Order</code> is the
+    number a caller types to enter it. Drag the <i class="bi bi-grip-vertical"></i> handle to
+    reorder; dropping renumbers the submenu categories cleanly, starting at 1.
+</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+{% for cat, msg in messages %}
+<div class="alert alert-{{ 'success' if cat == 'success' else 'danger' }}">{{ msg }}</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
+
+<table class="table table-striped sortable-categories">
+    <thead>
+        <tr>
+            <th style="width:2em;"></th>
+            <th>Name</th>
+            <th>Slug</th>
+            <th>Sort Order</th>
+            <th>Menu</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for cat in categories %}
+        <tr data-category-id="{{ cat.id }}">
+            <td class="drag-handle" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></td>
+            <td>{{ cat.name }}</td>
+            <td><code>{{ cat.slug }}</code></td>
+            <td><code>{{ cat.sort_order }}</code></td>
+            <td>
+                {% if cat.as_submenu %}
+                <span class="badge bg-primary">Submenu section</span>
+                {% else %}
+                <span class="text-success">Inline</span>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{{ url_for('admin.edit_file_area_category', cat_id=cat.id) }}"
+                   class="btn btn-sm btn-primary" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                </a>
+                <form method="post"
+                      action="{{ url_for('admin.delete_file_area_category', cat_id=cat.id) }}"
+                      style="display:inline;"
+                      onsubmit="return confirm('Delete category {{ cat.name }}? File areas in this category will keep their slug but the category label will be removed.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm"
+                            style="background:#330000;border:1px solid #ff0000;color:#ff0000;"
+                            title="Delete">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-success">No categories yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p class="small text-muted">
+    <i class="bi bi-info-circle"></i>
+    The <strong>slug</strong> is stored on each file area. Renaming a slug here won't update
+    existing areas — edit the area to reassign it. Deleting a category does not affect areas;
+    they keep their slug value.
+</p>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
+    document.querySelectorAll('table.sortable-categories tbody').forEach(function (tbody) {
+        new Sortable(tbody, {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: function () {
+                var order = Array.from(tbody.querySelectorAll('tr[data-category-id]'))
+                    .map(function (tr) { return parseInt(tr.getAttribute('data-category-id'), 10); });
+                fetch("{{ url_for('admin.reorder_file_area_categories') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf
+                    },
+                    body: JSON.stringify({order: order})
+                }).then(function (resp) {
+                    if (resp.ok) {
+                        location.reload();
+                    }
+                });
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}The Shattered Realm — Admin{% endblock %}
+{% block content %}
+<div class="bbs-header">
+  <h1><i class="bi bi-map"></i> The Shattered Realm</h1>
+</div>
+<p class="text-muted">
+  Manage the MUD's world content. See
+  <a href="{{ url_for('docs.view', slug='40-mud') }}">docs</a> for the
+  full player/admin guide.
+</p>
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h5><i class="bi bi-door-open"></i> Rooms</h5>
+      <p>{{ room_count }} room(s)</p>
+      <a href="{{ url_for('mud_admin.list_rooms') }}" class="btn btn-primary btn-sm">Manage Rooms</a>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h5><i class="bi bi-bag"></i> Items</h5>
+      <p>{{ item_count }} item(s)</p>
+      <a href="{{ url_for('mud_admin.list_items') }}" class="btn btn-primary btn-sm">Manage Items</a>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h5><i class="bi bi-bug"></i> Mobs</h5>
+      <p>{{ mob_count }} mob template(s)</p>
+      <a href="{{ url_for('mud_admin.list_mobs') }}" class="btn btn-primary btn-sm">Manage Mobs</a>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h5><i class="bi bi-flag"></i> Quests</h5>
+      <p>{{ quest_count }} quest(s)</p>
+      <a href="{{ url_for('mud_admin.list_quests') }}" class="btn btn-primary btn-sm">Manage Quests</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

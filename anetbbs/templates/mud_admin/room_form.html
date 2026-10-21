@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if room else 'New' }} Room — Admin{% endblock %}
+{% block content %}
+<h3>{{ 'Edit' if room else 'New' }} Room</h3>
+<form method="post" class="mb-4">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if not room %}
+  <div class="mb-3">
+    <label class="form-label">Slug (URL-safe, permanent)</label>
+    <input type="text" class="form-control" name="slug" required>
+  </div>
+  {% endif %}
+  <div class="mb-3">
+    <label class="form-label">Name</label>
+    <input type="text" class="form-control" name="name" value="{{ room.name if room else '' }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Zone</label>
+    <input type="text" class="form-control" name="zone" value="{{ room.zone if room else 'village' }}">
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Description</label>
+    <textarea class="form-control" name="description" rows="3">{{ room.description if room else '' }}</textarea>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Wandering mob (optional)</label>
+    <select class="form-select" name="mob_template_id">
+      <option value="">— none —</option>
+      {% for mob in mobs %}
+      <option value="{{ mob.id }}" {{ 'selected' if room and room.mob_template_id == mob.id }}>{{ mob.name }} (lvl {{ mob.level }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Special feature</label>
+    <select class="form-select" name="feature">
+      {% for f in feature_choices %}
+      <option value="{{ f }}" {{ 'selected' if room and (room.feature or '') == f }}>{{ f or '— none —' }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">Save</button>
+  <a href="{{ url_for('mud_admin.list_rooms') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+
+{% if room %}
+<h5>Exits</h5>
+<table class="table table-sm table-striped">
+  <thead><tr><th>Direction</th><th>Target room</th><th></th></tr></thead>
+  <tbody>
+    {% for e in room.exits %}
+    <tr>
+      <td>{{ e.direction }}</td>
+      <td>{{ e.target_room.name }}</td>
+      <td>
+        <form method="post" action="{{ url_for('mud_admin.delete_exit', room_id=room.id, exit_id=e.id) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm" style="background:#330000;border:1px solid #ff0000;color:#ff0000;"><i class="bi bi-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="text-center" style="color:#007700;">No exits yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<form method="post" action="{{ url_for('mud_admin.new_exit', room_id=room.id) }}" class="d-flex gap-2 align-items-end flex-wrap">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="form-label mb-0">Direction</label>
+    <select class="form-select form-select-sm" name="direction">
+      {% for d in ['north','south','east','west','up','down','northeast','northwest','southeast','southwest'] %}
+      <option value="{{ d }}">{{ d }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="form-label mb-0">Target room</label>
+    <select class="form-select form-select-sm" name="target_room_id">
+      {% for r in all_rooms %}
+      <option value="{{ r.id }}">{{ r.zone }} / {{ r.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-sm btn-primary">Add Exit</button>
+</form>
+{% endif %}
+{% endblock %}

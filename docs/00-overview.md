@@ -79,6 +79,10 @@ once.
   edits, file uploads, and more) awarded automatically, shown on the
   Profile page and rolled up on the public Stats page. See the
   [README's Achievements section](../README.md#achievements).
+- **The Shattered Realm** — a built-in native multiplayer text MUD
+  (rooms, monsters, items, shop, leveling, live chat), reached from
+  Game Center like any other door game. See
+  [40 — The Shattered Realm](40-mud.md).
 
 ## Where to go next
 
@@ -121,6 +125,7 @@ once.
 - [37 — Enhanced Client (optional add-on: browser Canvas+WebSocket terminal)](37-enhanced-client.md)
 - [38 — Add-ons (admin page for optional, not-in-the-stock-release pieces)](38-addons.md)
 - [39 — fsxNet IBOL/IBLC (real InterBBS Oneliners + Last Callers)](39-fsxnet-interbbs.md)
+- [40 — The Shattered Realm (built-in native multiplayer text MUD)](40-mud.md)
 
 ### Reference
 

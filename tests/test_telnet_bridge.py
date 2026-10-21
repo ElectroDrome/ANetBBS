@@ -105,6 +105,88 @@ class TelnetIACFilterTests(unittest.TestCase):
                          + bytes([_IAC, _WONT, 24]))
 
 
+class TelnetIACFilterMudProtocolTests(unittest.TestCase):
+    """Phase 3 of the door-games roadmap (2026-10-20): confirms the
+    EXISTING blanket-refuse/discard-everything behavior in
+    TelnetIACFilter already correctly handles the three real MUD
+    telnet protocol extensions (MSSP=70, MCCP2=86, GMCP=201 -- same
+    option numbers ANetBBS's own session.py now speaks server-side,
+    see tests/test_mud_protocol_extensions.py) when DIALING OUT to an
+    external MUD, with NO new production code needed:
+
+      - An offered MSSP/MCCP2/GMCP gets refused (DONT/WONT) exactly
+        like any other unsupported option -- a compliant remote never
+        proceeds to send the follow-up data a `DO` would have
+        unlocked (MSSP's variable dump, MCCP2's compression-start ack,
+        GMCP's own messages).
+      - Even if a non-compliant remote sent one of those anyway, ANY
+        IAC SB ... IAC SE block is already unconditionally discarded
+        regardless of its option byte -- never shown to the user.
+
+    This is the real wire-format precedent check this plan's Phase 3
+    called for: confirm current behavior with a real fixture test
+    first, add new code only if testing shows the existing refusal
+    insufficient. It's sufficient -- no telnet_bridge.py changes were
+    needed for this phase."""
+
+    _MSSP, _MCCP2, _GMCP = 70, 86, 201
+
+    def test_mssp_offer_is_refused_like_any_other_option(self):
+        f = TelnetIACFilter()
+        display, reply = f.process(bytes([_IAC, _WILL, self._MSSP]))
+        self.assertEqual(display, b'')
+        self.assertEqual(reply, bytes([_IAC, _DONT, self._MSSP]))
+
+    def test_mccp2_offer_is_refused_like_any_other_option(self):
+        f = TelnetIACFilter()
+        display, reply = f.process(bytes([_IAC, _WILL, self._MCCP2]))
+        self.assertEqual(display, b'')
+        self.assertEqual(reply, bytes([_IAC, _DONT, self._MCCP2]))
+
+    def test_gmcp_offer_is_refused_like_any_other_option(self):
+        f = TelnetIACFilter()
+        display, reply = f.process(bytes([_IAC, _WILL, self._GMCP]))
+        self.assertEqual(display, b'')
+        self.assertEqual(reply, bytes([_IAC, _DONT, self._GMCP]))
+
+    def test_a_noncompliant_mssp_dump_sent_anyway_is_still_fully_discarded(self):
+        """Defense in depth: even if a remote ignored our DONT and sent
+        the real IAC SB MSSP MSSP_VAR "NAME" MSSP_VAL "TestMUD" IAC SE
+        payload anyway, it must never reach the display stream."""
+        f = TelnetIACFilter()
+        mssp_var, mssp_val = 1, 2
+        payload = (bytes([mssp_var]) + b'NAME' + bytes([mssp_val]) + b'TestMUD')
+        seq = bytes([_IAC, _SB, self._MSSP]) + payload + bytes([_IAC, _SE])
+        display, reply = f.process(seq)
+        self.assertEqual(display, b'')
+        self.assertEqual(reply, b'')
+
+    def test_a_noncompliant_gmcp_message_sent_anyway_is_still_fully_discarded(self):
+        f = TelnetIACFilter()
+        seq = (bytes([_IAC, _SB, self._GMCP]) + b'Char.Vitals {"hp": 10}'
+              + bytes([_IAC, _SE]))
+        display, reply = f.process(seq)
+        self.assertEqual(display, b'')
+        self.assertEqual(reply, b'')
+
+    def test_real_mud_banner_with_mssp_mccp2_gmcp_offers_yields_clean_display(self):
+        """End-to-end shape: a real MUD's connect banner typically
+        offers several options up front, interleaved with plain text
+        -- confirms the user-visible output is exactly the plain text,
+        with every option offer correctly refused."""
+        f = TelnetIACFilter()
+        data = (bytes([_IAC, _WILL, self._MSSP])
+               + bytes([_IAC, _WILL, self._MCCP2])
+               + bytes([_IAC, _WILL, self._GMCP])
+               + b'\r\nWelcome to TestMUD!\r\n')
+        display, reply = f.process(data)
+        self.assertEqual(display, b'\r\nWelcome to TestMUD!\r\n')
+        self.assertEqual(reply,
+                         bytes([_IAC, _DONT, self._MSSP])
+                         + bytes([_IAC, _DONT, self._MCCP2])
+                         + bytes([_IAC, _DONT, self._GMCP]))
+
+
 class _EchoNegotiatingServer:
     """Minimal local TCP server: sends one WILL ECHO negotiation on
     connect, then echoes back anything it receives. Used to exercise

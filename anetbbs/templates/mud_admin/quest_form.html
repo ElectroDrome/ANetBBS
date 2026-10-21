@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if quest else 'New' }} Quest — Admin{% endblock %}
+{% block content %}
+<h3>{{ 'Edit' if quest else 'New' }} Quest</h3>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if not quest %}
+  <div class="mb-3">
+    <label class="form-label">Slug (URL-safe, permanent)</label>
+    <input type="text" class="form-control" name="slug" required>
+  </div>
+  {% endif %}
+  <div class="mb-3">
+    <label class="form-label">Name</label>
+    <input type="text" class="form-control" name="name" value="{{ quest.name if quest else '' }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Description</label>
+    <textarea class="form-control" name="description" rows="2">{{ quest.description if quest else '' }}</textarea>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Giver room</label>
+    <select class="form-select" name="giver_room_id" required>
+      <option value="">-- choose a room --</option>
+      {% for room in rooms %}
+      <option value="{{ room.id }}" {{ 'selected' if quest and quest.giver_room_id == room.id }}>{{ room.zone }} / {{ room.name }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text">The quests/accept/turnin verbs only work while standing in this room.</div>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Target mob</label>
+    <select class="form-select" name="target_mob_slug" required>
+      <option value="">-- choose a mob --</option>
+      {% for mob in mobs %}
+      <option value="{{ mob.slug }}" {{ 'selected' if quest and quest.target_mob_slug == mob.slug }}>{{ mob.name }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text">A kill anywhere in the world counts, not just one room.</div>
+  </div>
+  <div class="row">
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Kills required</label>
+      <input type="number" class="form-control" name="target_count" value="{{ quest.target_count if quest else 1 }}" min="1">
+    </div>
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Reward XP</label>
+      <input type="number" class="form-control" name="reward_xp" value="{{ quest.reward_xp if quest else 0 }}">
+    </div>
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Reward gold</label>
+      <input type="number" class="form-control" name="reward_gold" value="{{ quest.reward_gold if quest else 0 }}">
+    </div>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Reward item (optional)</label>
+    <select class="form-select" name="reward_item_slug">
+      <option value="">-- none --</option>
+      {% for item in items %}
+      <option value="{{ item.slug }}" {{ 'selected' if quest and quest.reward_item_slug == item.slug }}>{{ item.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">Save</button>
+  <a href="{{ url_for('mud_admin.list_quests') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

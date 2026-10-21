@@ -214,10 +214,29 @@ def _delete_game(stdscr, g):
         delete_game(g)
 
 
+def _reorder_game(stdscr, g, direction):
+    """Move `g` one slot up (direction=-1) or down (+1) among games
+    CURRENTLY ORDERED BY sort_order -- swaps sort_order with whichever
+    neighbor is there, same adjacent-swap convention already
+    established by menu.py's reorder_item() for BBS menu items. "Best
+    we can for a TUI" equivalent of the web admin's mouse drag-and-drop
+    (see games_admin.py's reorder_games()/renumber_games()): no mouse
+    here, but [+]/[-] on the selected row does the same job, one step
+    at a time."""
+    ordered = list_games()
+    idx = ordered.index(g)
+    new_idx = idx + direction
+    if 0 <= new_idx < len(ordered):
+        other = ordered[new_idx]
+        g.sort_order, other.sort_order = other.sort_order, g.sort_order
+        db.session.commit()
+
+
 def _run_games(stdscr):
     ui.run_list(
         stdscr, "Games", GAME_COLUMNS, list_games,
         on_add=_add_game, on_edit=_edit_game, on_delete=_delete_game,
+        on_reorder=_reorder_game,
     )
 
 
@@ -251,10 +270,27 @@ def _delete_category(stdscr, c):
         delete_category(c)
 
 
+def _reorder_category(stdscr, c, direction):
+    """Same adjacent-swap convention as _reorder_game() above, scoped
+    to GameCategory.sort_order -- which matters because an
+    as_submenu=True category's own sort_order is what's displayed as
+    its menu number at the top level in the terminal door menu (see
+    features/games.py), sharing that number space with ordinary
+    games."""
+    ordered = list_categories()
+    idx = ordered.index(c)
+    new_idx = idx + direction
+    if 0 <= new_idx < len(ordered):
+        other = ordered[new_idx]
+        c.sort_order, other.sort_order = other.sort_order, c.sort_order
+        db.session.commit()
+
+
 def _run_categories(stdscr):
     ui.run_list(
         stdscr, "Game Categories", CATEGORY_COLUMNS, list_categories,
         on_add=_add_category, on_edit=_edit_category, on_delete=_delete_category,
+        on_reorder=_reorder_category,
     )
 
 

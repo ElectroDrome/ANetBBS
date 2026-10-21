@@ -13,11 +13,39 @@ under a configurable storage path.
 | `name`              | display name                                     |
 | `description`       | shown in the area listing                        |
 | `storage_path`      | absolute path on disk where files live           |
+| `category`          | which category this area belongs to (see below)  |
 | `upload_permission` | `none` / `users` / `sysop`                       |
 | `is_sysop_only`     | hide entirely from non-admins                    |
 | `password`          | optional — area lock                             |
 | `min_access_level`  | minimum access level to see/browse the area (default 10 = registered users; 0 = everyone, 50 = VIP, 100 = sysop) |
 | `min_write_level`   | minimum access level to upload, independent of `upload_permission` |
+
+## Categories and submenu sections
+
+Every file area belongs to a category (**Admin → File Areas →
+Categories**), shown as a header on the area list (terminal and web).
+By default a category's areas are listed inline under its header —
+fine for a handful of areas, but once a category grows large it can
+run off the bottom of a real terminal screen.
+
+Flip **"Show as a submenu section"** on a category to collapse it
+instead: the top-level file-area list shows one selectable line for
+that whole category (e.g. "Games → (12 areas)"), and picking it opens
+a second screen listing just that category's own areas, with `B`/`Q`
+(terminal) or the browser back button (web) returning to the parent
+list. One level deep only. Off by default; existing categories/
+installs render exactly as before until a sysop opts one in. Reorder
+categories (and individual areas within a category) by drag-and-drop
+in the web admin, or with the up/down keys in the `anetbbs-cfg`
+terminal tool — see [`28-anetbbs-cfg.md`](28-anetbbs-cfg.md).
+
+A submenu category's own position in the top-level list is controlled
+by its own Sort Order (set on the category itself), not by any member
+area's number — matches Door Games' own submenu category behavior
+(see [`14-door-games.md`](14-door-games.md#categories-and-submenu-sections)).
+Numbering collisions (most commonly a bulk-imported network that never
+set individual numbers) resolve themselves automatically on the next
+restart.
 
 ## Where files live
 

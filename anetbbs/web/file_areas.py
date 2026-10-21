@@ -397,15 +397,37 @@ def _area_file_stats(area):
 @file_areas_bp.route('/')
 @login_required
 def index():
+    from ..models import FileAreaCategory
     areas = (FileArea.query.filter_by(is_active=True)
-             .order_by(FileArea.tag).all())
+             .order_by(FileArea.sort_order, FileArea.tag).all())
     visible = [a for a in areas if _visible_to(current_user, a)]
     # Annotate with file count for the listing page.
     rows = []
     for a in visible:
         count, total_size = _area_file_stats(a)
         rows.append({'area': a, 'count': count, 'total_size': total_size})
-    return render_template('file_areas/index.html', rows=rows)
+    # Grouped-by-category display, same flat walk-and-bucket shape
+    # games.py's own lobby() route + templates/games/lobby.html already
+    # established for door games -- added because file areas had no
+    # grouping concept at all until a sysop pointed out the gap. Unlike
+    # the terminal's as_submenu drill-down, a web page has no "typed
+    # number" constraint, so every category just gets its own section
+    # header here, collapsed or not.
+    categories = FileAreaCategory.query.order_by(
+        FileAreaCategory.sort_order, FileAreaCategory.name).all()
+    cat_names = {c.slug: c.name for c in categories}
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row['area'].category or 'other', []).append(row)
+    cat_order = []
+    seen = set()
+    for row in rows:
+        slug = row['area'].category or 'other'
+        if slug not in seen:
+            seen.add(slug)
+            cat_order.append(slug)
+    return render_template('file_areas/index.html', rows=rows, grouped=grouped,
+                           cat_order=cat_order, cat_names=cat_names)
 
 
 @file_areas_bp.route('/<int:area_id>')

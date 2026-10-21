@@ -1626,6 +1626,7 @@ def launch_door_game(game, user, socketio_emit_fn, bbs_name='ANetBBS',
                     return user.get(field, default)
                 return getattr(user, field, default)
             os.environ['BBS_USERNAME'] = str(_ufield('username') or '')
+            os.environ['BBS_USER_ID'] = str(_ufield('id', 0) or 0)
             os.environ['BBS_REAL_NAME'] = str(_ufield('display_name') or
                                               _ufield('username') or '')
             os.environ['BBS_EMAIL'] = str(_ufield('email') or '')

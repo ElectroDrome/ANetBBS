@@ -44,14 +44,21 @@ always shown flat there, no further nesting. Off by default; existing
 categories/installs render exactly as before until a sysop opts one
 in.
 
-Ordering is flat and global across the *entire* menu — a game's own
-**Sort Order** field controls its absolute position in the whole list
-(lower numbers first), not just its position within its own category.
-Category headers/sections are a side effect of walking that flat
-order and noticing where the category changes, not the primary sort
-key — so a sysop numbering every door 1-N as one list gets exactly
-that ordering, regardless of which categories those doors happen to
-be in.
+An inline category's games are ordered within a flat, global sequence —
+a game's own **Sort Order** field controls its absolute position in
+the whole top-level list (lower numbers first), and a category header
+is a side effect of walking that order and noticing where the
+category changes, not a sort key of its own. A **submenu** category is
+different: its own position in the top-level list is controlled by
+*its own* Sort Order (set on the category itself, under **Admin →
+Games → Categories**), not by any of its member games' numbers — drag
+it in the web admin, or renumber the whole category list with one
+click, and it moves as a single unit. Within a submenu category's own
+second-level screen, its games keep the same flat Sort Order ordering
+as any inline category. Numbering collisions (most commonly a
+bulk-imported network that never set individual numbers) resolve
+themselves automatically on the next restart; see `docs/CHANGELOG.md`'s
+v1.1.48 entry.
 
 The submenu screen supports the same file-based ANSI art override as
 the top-level Door Games list — see
@@ -73,6 +80,15 @@ web terminal.
 standalone project (a C# .NET 8 door game) that happens to share a
 similar name. The two are unrelated codebases; ANetCRAFT-Door is not
 bundled with ANetBBS and isn't the game described in this section.
+
+## The Shattered Realm — bundled native MUD
+
+Another `builtin_python` door, same shape as ANetCRAFT above (no
+external binary, seeded active by default): a classic fantasy
+dungeon-crawl MUD with rooms, monsters, items, a shop, a healer, real
+leveling, and live multiplayer chat. See
+[40 — The Shattered Realm](40-mud.md) for the full player and
+world-building guide.
 
 ## Built-in web games — casino wallet economy
 
@@ -1062,3 +1078,113 @@ every other rlogin credential. Only enable `RLOGIN_ENABLED` on a
 trusted network path, and treat any shared game-server credential the
 same way you'd treat A-Net Online's own bundled game server password:
 easy to rotate, not reused anywhere sensitive.
+
+## Standalone game-server mode (a whole install, no BBS menus at all)
+
+The `xtrn=` direct-door launch above is *per connection* — a specific
+client has to ask for it. `GAMESERVER_MODE_ENABLED` is the *site-wide*
+version: every login (telnet, SSH, or rlogin — all three funnel into
+the exact same post-login code path) skips the normal BBS main menu
+entirely and goes straight to the door menu instead. This is for
+running a whole ANetBBS install dedicated to being a game server —
+the same role some sysops run a separate Synchronet install for today
+(rlogin-only, straight to the door menu, no boards/mail/files) — not a
+toggle you'd flip on a normal full BBS.
+
+```ini
+# .env
+GAMESERVER_MODE_ENABLED=true
+
+# Optional: skip the door menu too and launch ONE specific door on
+# every single connection (mirrors Synchronet's own rlogin_auto_xtrn
+# convention) -- leave blank to show the full door menu instead.
+GAMESERVER_DEFAULT_DOOR_SLUG=tw2
+```
+
+Both keys are read live from `.env` on every login (no restart
+needed) — the same mechanism `FAST_LOGON_ENABLED` already uses.
+
+- Account creation/login itself is unchanged — only what happens
+  *after* a successful login changes. A new caller still goes through
+  the normal new-user flow.
+- A per-connection `xtrn=<slug>` request (the feature above) still
+  takes priority over the site-wide default, since it's the more
+  specific ask.
+- If `GAMESERVER_DEFAULT_DOOR_SLUG` is set but the slug is unknown,
+  inactive, or access-gated, the caller sees why and lands on the
+  door menu instead — never stranded, and never a bare BBS main menu
+  either, since this install is still a dedicated game server even
+  with a misconfigured default.
+- Recommended setup: run this as its own separate ANetBBS install/data
+  directory (its own `.env`, its own database) rather than flipping it
+  on for your main BBS — matching how a game-server-only Synchronet
+  install is normally a separate box/instance from a sysop's main BBS,
+  not a mode switch on it.
+
+## Door networks (shared multi-BBS door catalogs)
+
+Instead of hosting every door locally, a sysop can join a shared
+network that hosts a big catalog of doors centrally. **Admin → Door
+Networks** (`/admin/door-networks/`) wires up DoorParty
+(`dp.throwbackbbs.com`), the one network with a confirmed, documented
+connection mechanism.
+
+### How DoorParty actually works
+
+A member BBS does **not** connect to DoorParty's real server directly.
+Instead:
+
+1. You run a separate daemon on your own box, **DoorParty Connector**
+   (`github.com/echicken/doorparty-connector`, Node.js + npm):
+   ```sh
+   git clone https://github.com/echicken/doorparty-connector.git
+   cd doorparty-connector
+   npm install
+   ```
+   Edit its `settings.json` with the real SSH username/password
+   DoorParty issued you at signup, and pick a **local** port it should
+   listen on (e.g. `9999`):
+   ```json
+   {
+       "username": "doorparty_ssh_username",
+       "password": "doorparty_ssh_password",
+       "interface": "localhost",
+       "port": 9999,
+       "SSHServer": "dp.throwbackbbs.com",
+       "SSHPort": 2022,
+       "RLoginServer": "dp.throwbackbbs.com",
+       "RLoginPort": 513
+   }
+   ```
+   Then run it (`node index.js`, or under `pm2`/`forever` for a real
+   install) as its own long-lived service.
+2. This connector daemon holds your *real* DoorParty credentials and
+   does the actual upstream connection — **ANetBBS never needs to know
+   them.**
+3. In **Admin → Door Networks**, configure:
+   - **Local connector port** — the port from step 1 (`9999` above).
+   - **Your DoorParty BBS tag** — assigned when you sign up for
+     DoorParty.
+   - **Local shared secret** — a long random string *you* make up.
+     Only ever checked between ANetBBS and your own connector daemon;
+     never sent to DoorParty.
+4. Click "Add" to create a game entry (leave the door code blank for
+   one generic entry that drops into DoorParty's own in-menu door
+   picker — the confirmed, documented behavior). ANetBBS then makes an
+   ordinary local rlogin connection to `127.0.0.1:<your port>` using
+   the exact wire shape DoorParty's own setup docs specify.
+
+Sign up for DoorParty itself at `wiki.throwbackbbs.com` ("DoorParty
+Sign-up") — restrict access to regular users and above (DoorParty's own
+stated requirement: no guest/new accounts).
+
+### BBSLink and CombatNet
+
+Both are real, active door networks (confirmed via ENiGMA½'s own
+open-source `bbs_link`/`combatnet` modules, which list the credential
+fields each needs — BBSLink: a sysCode/authCode/schemeCode trio plus a
+per-door code; CombatNet: a `bbsTag`/password pair) but their
+wire-level connection mechanism wasn't confirmed — ENiGMA's own docs
+page doesn't describe it, and that detail is gated behind each
+service's own sysop registration. Not wired up yet; flagged honestly
+rather than guessed at.

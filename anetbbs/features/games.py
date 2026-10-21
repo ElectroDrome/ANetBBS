@@ -90,15 +90,54 @@ class GameManager:
                 'category': g.category or 'other', 'game_type': g.game_type,
                 'min_access_level': g.min_access_level or 0,
                 'web_game_module': g.web_game_module or '',
+                'sort_order': g.sort_order or 0,
             } for g in games if (g.min_access_level or 0) <= user_access]
 
-            # Build slug->name/as_submenu maps from DB categories. Order
-            # no longer matters here -- category headers now follow the
-            # games' own flat sort_order (see the comment further down),
-            # not GameCategory.sort_order.
+            # Build slug->name/as_submenu/sort_order maps from DB
+            # categories. Order no longer matters here -- category
+            # headers now follow the games' own flat sort_order (see the
+            # comment further down), not GameCategory.sort_order for
+            # WHERE a category appears. GameCategory.sort_order IS still
+            # used below as that category's own displayed menu number
+            # (see _display_number()).
             cat_rows = GameCategory.query.all()
             cat_names = {c.slug: c.name for c in cat_rows}
             cat_as_submenu = {c.slug: bool(c.as_submenu) for c in cat_rows}
+            cat_sort_order = {c.slug: (c.sort_order or 0) for c in cat_rows}
+
+        # Real bug Jerry hit live, right after the admin drag-and-drop
+        # reorder feature shipped for categories: dragging categories
+        # into a new order wrote new GameCategory.sort_order values (so
+        # the NUMBER shown next to each category changed) but their
+        # on-screen POSITION never moved, because the walk below used to
+        # iterate game_list directly and plant each as_submenu category's
+        # collapsed stand-in line wherever its first member GAME fell in
+        # Game.sort_order order -- entirely independent of
+        # GameCategory.sort_order. Fixed by pre-computing one combined,
+        # globally-number-sorted top-level order up front: each inline
+        # (non-submenu) game keeps using its OWN Game.sort_order as
+        # before (preserves the earlier "flat numbering spans
+        # categories" fix -- see the big comment below), and each
+        # as_submenu category contributes exactly ONE entry, positioned
+        # by its OWN GameCategory.sort_order instead of by any member
+        # game's number. A submenu category always collapses to a single
+        # line regardless, so there's no competing "this door's own
+        # number must land exactly here" need for it the way there is
+        # for an inline game -- safe to let its own sort_order drive
+        # position too, not just its label.
+        _seen_submenu_slugs = set()
+        _combined = []
+        for g in game_list:
+            slug = g['category']
+            if cat_as_submenu.get(slug):
+                if slug in _seen_submenu_slugs:
+                    continue
+                _seen_submenu_slugs.add(slug)
+                _combined.append((cat_sort_order.get(slug, 0), 'submenu', slug))
+            else:
+                _combined.append((g['sort_order'], 'game', g))
+        _combined.sort(key=lambda t: t[0])
+        top_level_order = [(kind, payload) for (_, kind, payload) in _combined]
 
         if not game_list:
             await self.session.write("\r\n\r\nNo door games are configured yet.\r\n"
@@ -151,13 +190,29 @@ class GameManager:
             # a player picking a game needs) to make room.
             _cols    = 2
             _col_w   = max(20, (_iw // _cols) - 2)
-            # Numbered entries in on-screen order -- either a game dict
+            # Maps the DISPLAYED/typed number -> either a game dict
             # (launch it directly) or a ('submenu', slug, cat_name) tuple
             # (a category with as_submenu=True: drill into a second-level
             # menu of just that category's games instead of expanding
-            # inline). Rebuilt every redraw since it's cheap and keeps
-            # numbering in sync with what's actually on screen.
-            numbered = []
+            # inline). The number itself is each game's own Game.sort_order
+            # (or, for a submenu category stand-in, that category's own
+            # GameCategory.sort_order) -- NOT a recomputed rank. Real bug
+            # fixed here: numbering used to be a fresh `num = 1; num += 1`
+            # counter walked every redraw, so adding/removing/reordering
+            # ANY game anywhere shifted every later game's displayed
+            # number, silently invalidating a sysop's own hand-drawn ANSI
+            # door-menu art that hardcodes option numbers (reported live:
+            # "I have had to remove my ansi menus multiple times because
+            # the numbers change"). A game's own number now only changes
+            # when ITS OWN sort_order is changed. First-claimant-wins on a
+            # genuine sort_order collision (`setdefault`) -- the admin UI
+            # warns about collisions on save so they're rare in practice,
+            # but this never crashes if one slips through; the colliding
+            # entry still renders, it's just unreachable by that number
+            # until the collision is fixed. Rebuilt every redraw since
+            # it's cheap and keeps numbering in sync with what's actually
+            # on screen.
+            by_number = {}
             if self.session.term_mode == 'enhanced':
                 # Real clickable buttons for the door-games category
                 # list -- Jerry's explicit ask, same treatment the main
@@ -171,25 +226,21 @@ class GameManager:
                 # zero changes to support it.
                 from .enhanced_protocol import encode_menu
                 item_list = []
-                num = 1
-                rendered_submenu_slugs = set()
-                for g in game_list:
-                    slug = g['category']
-                    if cat_as_submenu.get(slug):
-                        if slug in rendered_submenu_slugs:
-                            continue
+                for kind, payload in top_level_order:
+                    if kind == 'submenu':
+                        slug = payload
                         cat_name = cat_names.get(slug, slug.capitalize())
                         count = len(grouped[slug])
                         plural = 'door' if count == 1 else 'doors'
+                        num = cat_sort_order.get(slug, 0)
                         item_list.append((str(num), f'{cat_name} ({count} {plural})',
                                           '', '', f'{num}\r'))
-                        numbered.append(('submenu', slug, cat_name))
-                        num += 1
-                        rendered_submenu_slugs.add(slug)
+                        by_number.setdefault(num, ('submenu', slug, cat_name))
                         continue
+                    g = payload
+                    num = g['sort_order']
                     item_list.append((str(num), g['name'], '', '', f'{num}\r'))
-                    numbered.append(g)
-                    num += 1
+                    by_number.setdefault(num, g)
                 item_list.append(('Q', 'Return', '', '', 'Q\r'))
                 self.session._enhanced_vt_state = None
                 self.session.writer.write(
@@ -203,10 +254,8 @@ class GameManager:
                 await self.session.write(f"\r\n{BOLD}{CYAN}{hbar}{RESET}\r\n")
                 await self.session.write(f"{WHT}{title}{RESET}\r\n")
                 await self.session.write(f"{BOLD}{CYAN}{hbar}{RESET}\r\n")
-                num = 1
                 prev_slug = None
                 cells = []
-                rendered_submenu_slugs = set()
 
                 async def _flush_cells():
                     for i in range(0, len(cells), _cols):
@@ -214,24 +263,23 @@ class GameManager:
                         await self.session.write(f"  {row}\r\n")
                     cells.clear()
 
-                for g in game_list:
-                    slug = g['category']
-                    if cat_as_submenu.get(slug):
-                        if slug in rendered_submenu_slugs:
-                            continue  # already rendered as a section line
+                for kind, payload in top_level_order:
+                    if kind == 'submenu':
+                        slug = payload
                         await _flush_cells()
                         cat_name = cat_names.get(slug, slug.capitalize())
                         cat_games = grouped[slug]
                         count = len(cat_games)
                         plural = 'door' if count == 1 else 'doors'
+                        num = cat_sort_order.get(slug, 0)
                         await self.session.write(
                             f"  {YEL}{num:2d}{DIM}. {GRN}{BOLD}{cat_name}{RESET}"
                             f"{DIM} -> ({count} {plural}){RESET}\r\n")
-                        numbered.append(('submenu', slug, cat_name))
-                        num += 1
-                        rendered_submenu_slugs.add(slug)
+                        by_number.setdefault(num, ('submenu', slug, cat_name))
                         prev_slug = slug
                         continue
+                    g = payload
+                    slug = g['category']
                     if slug != prev_slug:
                         await _flush_cells()
                         cat_name = cat_names.get(slug, slug.capitalize())
@@ -239,40 +287,35 @@ class GameManager:
                         fill = '─' * max(0, _iw - len(label))
                         await self.session.write(f"{BOLD}{CYAN}{label}{fill}{RESET}\r\n")
                         prev_slug = slug
+                    num = g['sort_order']
                     name_col = g['name'][:_col_w - 5]
                     cells.append(
                         f"{YEL}{num:2d}{DIM}. {GRN}{name_col:<{_col_w - 5}}{RESET}")
-                    numbered.append(g)
-                    num += 1
+                    by_number.setdefault(num, g)
                 await _flush_cells()
                 await self.session.write(f"  {YEL}Q{DIM}. {GRN}Return{RESET}\r\n")
                 await self.session.write(f"{BOLD}{CYAN}{hbar}{RESET}\r\n\r\n")
             else:
-                # write_menu_art drew a custom screen -- numbered still
-                # needs to be built (in the same order the loop above
-                # would have numbered things) so input parsing matches
-                # whatever the custom art actually shows.
-                num = 1
-                rendered_submenu_slugs = set()
-                for g in game_list:
-                    slug = g['category']
-                    if cat_as_submenu.get(slug):
-                        if slug in rendered_submenu_slugs:
-                            continue
-                        numbered.append(('submenu', slug, cat_names.get(slug, slug.capitalize())))
-                        num += 1
-                        rendered_submenu_slugs.add(slug)
+                # write_menu_art drew a custom screen -- by_number still
+                # needs to be built (same numbers the loops above would
+                # assign) so input parsing matches whatever the custom
+                # art actually shows.
+                for kind, payload in top_level_order:
+                    if kind == 'submenu':
+                        slug = payload
+                        num = cat_sort_order.get(slug, 0)
+                        by_number.setdefault(
+                            num, ('submenu', slug, cat_names.get(slug, slug.capitalize())))
                         continue
-                    numbered.append(g)
-                    num += 1
+                    g = payload
+                    by_number.setdefault(g['sort_order'], g)
 
             choice = await self.session.read_line("Pick a game (number or Q): ")
             if not choice or choice.lower() == 'q':
                 return
             try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(numbered):
-                    entry = numbered[idx]
+                entry = by_number.get(int(choice))
+                if entry is not None:
                     if isinstance(entry, tuple) and entry[0] == 'submenu':
                         _, slug, cat_name = entry
                         await self._show_category_submenu(slug, cat_name, grouped[slug])
@@ -321,6 +364,14 @@ class GameManager:
         # blank line, prompt line -- 8 fixed lines not available for
         # game rows.
         _chrome_rows = 8
+        # Displayed/typed number is each game's own Game.sort_order, not
+        # a recomputed page-relative rank -- same fix and same rationale
+        # as show_door_menu()'s own `by_number` (see its comment). Built
+        # once since `games` is this whole category's fixed member list,
+        # not just the current page.
+        by_number = {}
+        for g in games:
+            by_number.setdefault(g['sort_order'], g)
         page = 0
         while True:
             _iw = ui_width(self.session)
@@ -346,8 +397,9 @@ class GameManager:
                 # encode_menu()'s 'send' override so the read_line()
                 # dispatch below needs no changes.
                 from .enhanced_protocol import encode_menu
-                item_list = [(str(i), g['name'], '', '', f'{i}\r')
-                            for i, g in enumerate(page_games, start=start + 1)]
+                item_list = [(str(g['sort_order']), g['name'], '', '',
+                             f"{g['sort_order']}\r")
+                            for g in page_games]
                 if total_pages > 1:
                     if page > 0:
                         item_list.append(('P', 'Prev page', '', '', 'P\r'))
@@ -370,9 +422,10 @@ class GameManager:
                 await self.session.write(f"{WHT}{title}{RESET}\r\n")
                 await self.session.write(f"{BOLD}{CYAN}{hbar}{RESET}\r\n")
                 cells = []
-                for i, g in enumerate(page_games, start=start + 1):
+                for g in page_games:
                     name_col = g['name'][:_col_w - 5]
-                    cells.append(f"{YEL}{i:2d}{DIM}. {GRN}{name_col:<{_col_w - 5}}{RESET}")
+                    cells.append(
+                        f"{YEL}{g['sort_order']:2d}{DIM}. {GRN}{name_col:<{_col_w - 5}}{RESET}")
                 for i in range(0, len(cells), _cols):
                     row = '  '.join(cells[i:i + _cols])
                     await self.session.write(f"  {row}\r\n")
@@ -409,9 +462,9 @@ class GameManager:
                 page -= 1
                 continue
             try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(games):
-                    await self._launch(games[idx])
+                entry = by_number.get(int(choice))
+                if entry is not None:
+                    await self._launch(entry)
                     continue
             except ValueError:
                 pass
@@ -462,7 +515,26 @@ class GameManager:
                 mod = importlib.import_module(mod_name)
                 fn  = getattr(mod, func_name)
                 username = (self.session.user or {}).get('username', 'player')
-                await fn(self.session, username)
+                # Real bug found live (SSH): a builtin_python game that
+                # touches the database (MudCharacter.query, etc. -- the
+                # first one that actually needed this) crashed with
+                # "Working outside of application context" the instant
+                # it queried, since this in-process path never pushed
+                # one -- the WEB UI's separate subprocess bridge
+                # (builtin_runner.py) has the identical fix for the
+                # identical reason; this is that same gap in the OTHER
+                # launch path. Same throwaway-Flask-app shape this
+                # function already builds further down for the
+                # non-builtin_python branch.
+                from flask import Flask as _Flask
+                from anetbbs.config import get_config as _get_config
+                from anetbbs.models import db as _db
+                from .db_scope import transient_app_context as _tac
+                _app = _Flask(__name__)
+                _app.config.from_object(_get_config(os.environ.get('FLASK_ENV', 'production')))
+                _db.init_app(_app)
+                with _tac(_app):
+                    await fn(self.session, username)
             except Exception as exc:
                 logger.exception('builtin_python game error: %s', exc)
                 await self.session.write(f"\r\nError launching game: {exc}\r\n")
@@ -567,3 +639,106 @@ class GameManager:
                 await self.session.write("Please enter a valid number\r\n")
 
         await self.session.read_line("\r\nPress Enter to continue...")
+
+
+def resolve_sort_order_collisions():
+    """Idempotent self-healing pass, run on every boot (same convention
+    as every other backfill/seed step in web_app.py's own
+    _create_default_data()).
+
+    GAMES inside an as_submenu=True category's own submenu page: real
+    live feedback, confirmed directly -- Jerry has no existing hand-
+    drawn ANSI art for any category submenu page ("I do not have the
+    sub-menus ansi because the numbers kept changing"), specifically
+    BECAUSE this class of bug made it pointless to build one. With no
+    art to protect, a submenu's games get the exact same treatment
+    categories themselves already get below: always resequenced to a
+    clean 1, 2, 3, ... run on every boot, not just when a literal
+    collision exists -- otherwise a category that happened to already
+    be collision-FREE-but-gappy (e.g. "0, 10, 20, 30, ..." -- the
+    result of an EARLIER version of this same function, which only
+    bumped genuine duplicates) would never reach a clean state at all,
+    confirmed live: ADULT and CHAT/Apps/Other stayed at "0, 10, 20..."
+    forever while ADVENTURE (still a live collision) got fixed, an
+    inconsistent, confusing result across categories a sysop is
+    looking at side by side.
+
+    GAMES NOT inside an as_submenu category (an inline category's own
+    games, shown directly at the top level, or a game with no category
+    at all) keep the OLD, more conservative collision-only rule
+    instead: a sysop's own deliberately-chosen number can be hardcoded
+    into the TOP-LEVEL door-menu art screen (see show_door_menu()'s own
+    big comment) -- and unlike submenu pages, Jerry has NOT said that
+    top-level art doesn't currently exist, so this stays narrow there:
+    only a GENUINE duplicate gets touched, and even then only the
+    duplicates are bumped to a free value, not a full resequence.
+
+    CATEGORIES: unlike games, a category's own number isn't something
+    a sysop hardcodes into per-door ANSI art -- it's a short,
+    sysop-curated navigational list, and real live feedback (repeated
+    across several rounds: "numbers should start at 1") made clear
+    categories don't carry games' same "never reshuffle" expectation.
+    So every as_submenu=True category that currently shows a numbered
+    stand-in line at all (has at least one visible active game -- an
+    empty/invisible category would otherwise silently waste a number
+    the same way an inline category used to, before that was fixed)
+    gets resequenced to a clean 1, 2, 3, ... run on every boot,
+    preserving whatever relative order the sysop already dragged them
+    into -- this only ever cleans up the NUMBER label, drag-and-drop
+    still fully controls the actual order."""
+    from ..models import db, Game, GameCategory
+    changed = False
+
+    # Same exact filter show_door_menu() itself uses to build game_list
+    # -- real bug found live: an earlier version of this function used
+    # a plain is_active=True query, which still counted a category
+    # whose only games were builtin_web/door_dos_browser (types that
+    # NEVER appear in the terminal Door Games menu at all, by design)
+    # as "visible", handing it a number that then silently vanished
+    # from the sequence a sysop actually sees on screen -- e.g. "2, 3,
+    # 4, ... 12, [missing 13], 14, ..." for exactly the categories/
+    # games this mismatch affected.
+    active_games = (Game.query.filter_by(is_active=True)
+                    .filter(~Game.game_type.in_(['builtin_web', 'door_dos_browser']))
+                    .order_by(Game.sort_order, Game.name).all())
+    submenu_cat_slugs = {c.slug for c in GameCategory.query.filter_by(as_submenu=True).all()}
+    games_by_category = {}
+    for g in active_games:
+        games_by_category.setdefault(g.category or 'other', []).append(g)
+    for cat_slug, games in games_by_category.items():
+        # games is already ordered by (sort_order, name) from the query
+        # above -- resequencing in that same order preserves whatever
+        # relative position already existed, only the NUMBER changes.
+        if cat_slug in submenu_cat_slugs:
+            for i, g in enumerate(games, start=1):
+                if g.sort_order != i:
+                    g.sort_order = i
+                    changed = True
+            continue
+        orders = [g.sort_order or 0 for g in games]
+        has_collision = len(set(orders)) != len(orders)
+        if not has_collision:
+            continue
+        seen = set()
+        next_free = max(orders)
+        for g in games:
+            so = g.sort_order or 0
+            if so in seen:
+                next_free += 10
+                g.sort_order = next_free
+                changed = True
+            else:
+                seen.add(so)
+
+    active_cat_slugs = {g.category for g in active_games}
+    numbered_cats = [c for c in GameCategory.query.filter_by(as_submenu=True)
+                     .order_by(GameCategory.sort_order, GameCategory.name).all()
+                     if c.slug in active_cat_slugs]
+    for i, c in enumerate(numbered_cats, start=1):
+        if c.sort_order != i:
+            c.sort_order = i
+            changed = True
+
+    if changed:
+        db.session.commit()
+    return changed

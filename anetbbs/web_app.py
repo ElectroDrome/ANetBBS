@@ -609,6 +609,8 @@ def create_app(config_name=None):
     from .web.lastcallers_admin import lastcallers_admin_bp
     from .web.games_interbbs_admin import games_interbbs_admin_bp
     from .web.fsxnet_admin import fsxnet_admin_bp
+    from .web.door_networks_admin import door_networks_admin_bp
+    from .web.mud_admin import mud_admin_bp
     from .web.personal_pages import pages_bp, serve_root_page
     from .web.docs import docs_bp
     from .web.wiki import wiki_bp
@@ -728,6 +730,8 @@ def create_app(config_name=None):
     app.register_blueprint(lastcallers_admin_bp)
     app.register_blueprint(games_interbbs_admin_bp)
     app.register_blueprint(fsxnet_admin_bp)
+    app.register_blueprint(door_networks_admin_bp)
+    app.register_blueprint(mud_admin_bp)
 
     # Public downloads — auto-listing of the sysop's release directory.
     # No DB rows; scans DOWNLOADS_DIR on each (cached) request.
@@ -792,6 +796,23 @@ def create_app(config_name=None):
             seed_default_menus()
         except Exception:
             app.logger.exception('Failed to seed default BBS menus')
+        # Self-heal any genuine Game/GameCategory sort_order collision
+        # (e.g. a bulk-imported network category left every game at the
+        # column's own 0 default) -- see resolve_sort_order_collisions()'s
+        # own docstring for the full real-bug writeup and why this is
+        # safe to run unconditionally on every boot.
+        try:
+            from .features.games import resolve_sort_order_collisions
+            resolve_sort_order_collisions()
+        except Exception:
+            app.logger.exception('Failed to resolve game sort_order collisions')
+        # Same self-heal, scoped to FileArea/FileAreaCategory -- see
+        # features/file_areas.py's own docstring.
+        try:
+            from .features.file_areas import resolve_file_area_sort_order_collisions
+            resolve_file_area_sort_order_collisions()
+        except Exception:
+            app.logger.exception('Failed to resolve file area sort_order collisions')
         # Per-node scratch dirs (data/temp/node1..nodeN) so door games
         # always have somewhere to drop DOOR.SYS / DOOR32.SYS / DORINFO.
         try:
@@ -1289,6 +1310,12 @@ def _lightweight_migrate(app):
     # comment and echomail/freq.py.
     _ensure_column('file_areas', 'freq_enabled', 'BOOLEAN NOT NULL DEFAULT 0')
     _ensure_column('file_areas', 'freq_password', 'VARCHAR(80)')
+    # Grouping + stable numbering -- see FileArea's own comment and the
+    # new FileAreaCategory model (file_area_categories is a brand new
+    # table, picked up automatically by db.create_all(), no
+    # _ensure_column() needed for it).
+    _ensure_column('file_areas', 'category', "VARCHAR(50) DEFAULT 'other'")
+    _ensure_column('file_areas', 'sort_order', 'INTEGER DEFAULT 0')
     # Scheduled hub-initiated polling of downstream nodes (previously
     # manual-only via "Poll Now") -- see BinkPNode's own comment.
     _ensure_column('binkp_nodes', 'poll_interval_minutes', 'INTEGER')
@@ -2428,6 +2455,27 @@ def _create_default_data():
                 _ca.root_path, 'features', 'anetcraft.py'),
             '_active_default': True,
         },
+        {
+            # The Shattered Realm — built-in native multiplayer text MUD,
+            # ships with ANetBBS. No external binary needed; must_exist
+            # points at the package's own __init__.py.
+            'name': 'The Shattered Realm',
+            'slug': 'shattered-realm',
+            'description': "A classic fantasy dungeon-crawl MUD -- rooms, "
+                           "monsters, items, a shop and healer, leveling, "
+                           "and live chat with everyone else exploring. "
+                           "Runs natively in the terminal -- SSH, telnet, "
+                           "or the built-in web terminal. One persistent "
+                           "character per account.",
+            'category': 'mud',
+            'icon': 'bi-map',
+            'game_type': 'builtin_python',
+            'web_game_module': 'anetbbs.features.mud:launch_mud',
+            'sort_order': 36,
+            'must_exist': os.path.join(
+                _ca.root_path, 'features', 'mud', '__init__.py'),
+            '_active_default': True,
+        },
         # ANetDarkForces (Terminal Edition) is deliberately NOT in this
         # list right now -- pulled back out of the live product per a
         # live playtest report (readability/visual issues bad enough to
@@ -3373,7 +3421,16 @@ def _create_default_data():
             'rlogin_bbs_tag': ''.join(
                 secrets.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ') for _ in range(4)),
             'max_nodes': 20,
-            'sort_order': 20,
+            # Was 20 -- collided with 'tw2' (also sort_order=20, a
+            # DIFFERENT category so both landed in the same top-level
+            # flat list). Harmless under the old recomputed-rank
+            # numbering; became a REAL displayed-number collision once
+            # features/games.py started showing sort_order itself as
+            # the typed menu number (the Game Center admin UX fix). Only
+            # affects fresh installs -- an upgrading sysop who already
+            # has both active should click Admin -> Games -> Renumber
+            # once (see CHANGELOG).
+            'sort_order': 35,
             # No local game files to check for (it's a remote
             # connection) — door_runner.py always ships, so it's used
             # here as an always-true guard, matching the must_exist
@@ -3541,6 +3598,15 @@ def _create_default_data():
             db.session.add(GameCategory(name=name, slug=slug, sort_order=order))
         db.session.commit()
 
+    # Backfill for an UPGRADING install -- the block above only runs
+    # once, on a truly empty table, so an existing install (already
+    # past that point) needs its own idempotent check to pick up a
+    # category added in a later release. Same per-slug existence-check
+    # pattern already used for bundled Game rows just below.
+    if not GameCategory.query.filter_by(slug='mud').first():
+        db.session.add(GameCategory(name='MUD', slug='mud', sort_order=7))
+        db.session.commit()
+
     # ─── Default tagline pool ────────────────────────────────────────
     # Idempotent: only seeds if the table is completely empty, so a
     # sysop who's already added/removed their own entries never gets
@@ -3564,6 +3630,23 @@ def _create_default_data():
                 _ca.logger.warning('Tagline seed skipped: %s', exc)
             except Exception:
                 pass
+
+    # The Shattered Realm's starting world (rooms/exits/items/mobs) --
+    # kept in its own module rather than inlined here (this function is
+    # already enormous) since it's pure content, not app-boot wiring.
+    # Fully idempotent (same per-slug existence-check pattern as every
+    # other seed block in this function) so it's safe to call on every
+    # boot, both a fresh install and an upgrading one.
+    try:
+        from .features.mud.seed import seed_world
+        seed_world()
+    except Exception as exc:  # pylint: disable=broad-except
+        db.session.rollback()
+        try:
+            from flask import current_app as _ca
+            _ca.logger.warning('MUD world seed skipped: %s', exc)
+        except Exception:
+            pass
 
 
 def main():

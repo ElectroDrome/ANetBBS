@@ -2185,7 +2185,7 @@ class BBSMenuUI:
 
     async def list_files(self):
         """Browse file areas, download via ZMODEM/YMODEM/XMODEM, upload via ZMODEM."""
-        from anetbbs.models import FileUpload, FileArea, TicFile
+        from anetbbs.models import FileUpload, FileArea, FileAreaCategory, TicFile
         from .xfer import available_protocols
         from .ansi_ui import FG, RESET, BOLD
         app = _app()
@@ -2198,14 +2198,17 @@ class BBSMenuUI:
                 user_level = int((self.session.user or {}).get('access_level', 10))
                 if is_sysop:
                     areas = (FileArea.query
-                             .order_by(FileArea.name).all())
+                             .order_by(FileArea.sort_order, FileArea.name).all())
                 else:
                     areas = (FileArea.query
                              .filter_by(is_active=True, is_sysop_only=False)
                              .filter(FileArea.min_access_level <= user_level)
-                             .order_by(FileArea.name).all())
+                             .order_by(FileArea.sort_order, FileArea.name).all())
 
-
+                cat_rows = FileAreaCategory.query.all()
+                cat_names = {c.slug: c.name for c in cat_rows}
+                cat_as_submenu = {c.slug: bool(c.as_submenu) for c in cat_rows}
+                cat_sort_order = {c.slug: (c.sort_order or 0) for c in cat_rows}
 
                 area_rows = []
                 for a in areas:
@@ -2242,6 +2245,8 @@ class BBSMenuUI:
                         'can_upload': can_upload, 'cnt': cnt,
                         'inactive': inactive, 'sysop_only': sysop_flag,
                         'storage_path': a.storage_path or '',
+                        'category': a.category or 'other',
+                        'sort_order': a.sort_order or 0,
                     })
 
                 top_cnt = (FileUpload.query.filter(
@@ -2267,6 +2272,45 @@ class BBSMenuUI:
             # entries) ----
             from .ansi_ui import ui_width as _ui_width, banner
 
+            # Category grouping: an as_submenu=True category collapses to a
+            # single selectable row ("-> Category (N areas)") -- entering it
+            # opens a second lightbar scoped to just that category's areas,
+            # same two-level drill-down shape as features/games.py's own
+            # as_submenu door categories. A category NOT marked as_submenu
+            # (or an area with no category) still lists its areas inline.
+            #
+            # Position is driven by a COMBINED, number-sorted domain (each
+            # inline area's own sort_order, or each submenu category's own
+            # sort_order for its one stand-in row) -- NOT by where a
+            # category's first member area happens to fall in a flat walk.
+            # Real bug already found and fixed for Door Games' identical
+            # shape (features/games.py's top_level_order): walking areas
+            # in their own sort order and planting a category's stand-in
+            # wherever its first member appears makes the category's own
+            # sort_order control only its NUMBER LABEL, not its actual
+            # on-screen position -- confirmed live, repeatedly, as "the
+            # numbering is still messed up" even after the category's own
+            # number was fixed. Applying that same fix here from the start.
+            _seen_submenu_slugs = set()
+            _combined = []
+            for row in area_rows:
+                slug = row['category']
+                if cat_as_submenu.get(slug):
+                    if slug in _seen_submenu_slugs:
+                        continue
+                    _seen_submenu_slugs.add(slug)
+                    cat_areas = [r for r in area_rows if r['category'] == slug]
+                    _combined.append((cat_sort_order.get(slug, 0), {
+                        'id': None, 'name': cat_names.get(slug, slug.capitalize()),
+                        'tag': '', 'cnt': sum(r['cnt'] for r in cat_areas),
+                        'inactive': False, 'sysop_only': False, 'can_upload': False,
+                        'storage_path': '', 'is_cat_group': True, 'slug': slug,
+                        'cat_areas': cat_areas,
+                    }))
+                else:
+                    _combined.append((row.get('sort_order', 0), row))
+            _combined.sort(key=lambda t: t[0])
+
             lb_rows = []
             if top_cnt or is_sysop:
                 lb_rows.append({
@@ -2274,7 +2318,7 @@ class BBSMenuUI:
                     'cnt': top_cnt, 'inactive': False, 'sysop_only': False,
                     'can_upload': True, 'storage_path': '', 'is_top': True,
                 })
-            lb_rows.extend(area_rows)
+            lb_rows.extend(row for _, row in _combined)
 
             if not lb_rows:
                 await self.session.write('\x1b[2J\x1b[H')
@@ -2297,6 +2341,12 @@ class BBSMenuUI:
                     f"  {FG['gry']}{'─' * max(50, _w - 4)}{RESET}\r\n")
 
             def render_row_files(idx, row, selected):
+                if row.get('is_cat_group'):
+                    label = f"{row['name']} -> ({len(row['cat_areas'])} areas)"
+                    n_col = FG['wht'] if not selected else ''
+                    return (f"  {FG['yel']}{idx+1:>3}{RESET}  "
+                            f"{n_col}{label[:_name_w]:<{_name_w}}{RESET} "
+                            f"{FG['grn']}{row['cnt']:>7}{RESET}")
                 flags = ''
                 if row.get('inactive'):
                     flags += f" {FG['red']}[inactive]{RESET}"
@@ -2321,6 +2371,11 @@ class BBSMenuUI:
                 return
             elif result[0] == 'enter':
                 row = lb_rows[result[1]]
+                if row.get('is_cat_group'):
+                    await self._file_area_category_browse(
+                        row['name'], row['cat_areas'],
+                        uploads_dir, web_base, protos)
+                    continue
                 if row.get('is_top'):
                     area_filter, area_name, area_id, can_up, stor = \
                         'top', 'General / Top-level', None, True, ''
@@ -2336,6 +2391,59 @@ class BBSMenuUI:
             await self._file_area_browse(
                 area_id, area_name, area_filter,
                 can_up, uploads_dir, web_base, protos, stor)
+
+    async def _file_area_category_browse(self, cat_label, cat_areas,
+                                         uploads_dir, web_base, protos):
+        """Second-level lightbar for a single as_submenu=True file-area
+        category -- same shape as list_files()'s own top-level lightbar,
+        scoped to just this category's areas. 'B'/quit returns to the
+        top-level area list (handled for free: this is a plain call from
+        list_files()'s own while loop, so returning here just lets that
+        loop redraw the top-level list again, same convention
+        _file_area_browse() already uses for its own drill-down)."""
+        from .ansi_ui import FG, RESET, BOLD, ui_width as _ui_width, banner
+
+        while True:
+            _w = _ui_width(self.session)
+            _name_w = max(30, _w - 26)
+
+            async def render_header_cat():
+                await self.session.write(banner(f'File Library - {cat_label}', _w))
+                await self.session.write(
+                    f"  {FG['cyan']}{BOLD}"
+                    f"{'#':>3}  {'Name':<{_name_w}} {'Files':>7}{RESET}\r\n"
+                    f"  {FG['gry']}{'─' * max(50, _w - 4)}{RESET}\r\n")
+
+            def render_row_cat(idx, row, selected):
+                flags = ''
+                if row.get('inactive'):
+                    flags += f" {FG['red']}[inactive]{RESET}"
+                if row.get('sysop_only'):
+                    flags += f" {FG['mag']}[sysop]{RESET}"
+                n_col = FG['wht'] if not selected else ''
+                return (f"  {FG['yel']}{idx+1:>3}{RESET}  "
+                        f"{n_col}{row['name'][:_name_w]:<{_name_w}}{RESET} "
+                        f"{FG['grn']}{row['cnt']:>7}{RESET}{flags}")
+
+            def render_hint_cat(sel, total):
+                return (f"  {FG['cyan']}{sel+1}/{total}{RESET}  "
+                        f"{FG['cyan']}Up/Dn PgUp/PgDn{RESET}=scroll  "
+                        f"{FG['cyan']}Enter{RESET}=open  "
+                        f"{FG['cyan']}Q{RESET}=back")
+
+            result = await self._rss_lightbar(
+                cat_areas, render_header_cat, render_row_cat, render_hint_cat)
+
+            if result[0] == 'quit':
+                return
+            elif result[0] == 'enter':
+                row = cat_areas[result[1]]
+                await self._file_area_browse(
+                    row['id'], row['name'], 'area',
+                    row['can_upload'], uploads_dir, web_base, protos,
+                    row['storage_path'])
+            else:
+                continue
 
     async def _file_area_browse(self, area_id, area_name, area_filter,
                                 can_upload, uploads_dir, web_base, protos,

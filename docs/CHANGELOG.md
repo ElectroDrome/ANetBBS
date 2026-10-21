@@ -1,11 +1,88 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.47`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.48`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.48 — Native MUD engine, door-games admin fixes, game-server mode, MUD telnet protocols, and DoorParty federation (October 2026)
+
+**The Shattered Realm — a native, built-in MUD** (Game Center → Door
+Games): a full multiplayer text MUD with no external door or dropfile,
+one persistent character per account. Four zones (Village, Forest,
+Dungeon, and the high-level Ruined Citadel), movement/combat/inventory/
+shops/a healer, live chat with everyone else exploring, and real
+leveling. Shipping with its first release:
+
+- **Four character classes** (Warrior, Mage, Rogue, Cleric), chosen
+  once at character creation, each with its own stat growth and combat
+  ability (Power Attack, Fireball, Backstab, Heal).
+- **Quests**: an admin-editable catalog (giver room, target monster,
+  kill count, reward); accepting tracks kills anywhere in the world,
+  turning in at the giver hands over the reward. A working example
+  quest, "Cleanse the Citadel," ships with the base world.
+- Class-restricted signature weapons, mana that regenerates on
+  movement and fully refills at the healer, and a full admin UI for
+  building rooms, items, monsters, and quests.
+- Negotiates real MUD telnet protocol extensions (MSSP, MCCP2, GMCP)
+  when reached through Game Center, for real MUD clients and
+  server-listing crawlers.
+- Fixed a chain of bugs that together blocked playing it at all: the
+  web UI always reported "you need to be logged in" even for a
+  genuinely logged-in user; once that was fixed, actually loading or
+  creating a character crashed outright on the web (missing database
+  access) and, separately, the same crash over telnet/SSH; and typing
+  a character name or class choice showed nothing at all on screen
+  (no local echo) in both cases. Class, room, and shop descriptions
+  also no longer break words apart at the right edge of the screen,
+  and the shop's item list is now paginated instead of running off
+  the top of the screen.
+
+**Door Games admin fixes**: the number a player types to pick a door
+in the Door Games menu no longer shifts when an unrelated door is
+added, removed, or reordered elsewhere in the list — previously every
+door's number was recomputed from scratch on each redraw, so changing
+one door silently renumbered every door listed after it. Reordering is
+now drag-and-drop in the web admin — for both individual games and
+their categories, with a category's on-screen position now actually
+following where it's dragged to, not just its displayed number — (with
+a one-click "renumber this list cleanly" option, scoped to just one
+category if needed) and up/down keys in the `anetbbs-cfg` terminal
+tool, both grouped by category with collapsible sections. Every
+category's own submenu page now always numbers its doors starting at
+1 with no gaps, automatically on every restart, no admin action
+needed — top-level (not-in-a-submenu) door numbers still only change
+when a genuine duplicate is found, since those can be hardcoded into
+the main Door Games screen's own art. Categories themselves always number cleanly
+starting at 1, same automatic restart-time fix.
+
+**Standalone game-server deployment mode**: a new install-wide option
+(`GAMESERVER_MODE_ENABLED`, plus an optional
+`GAMESERVER_DEFAULT_DOOR_SLUG`) drops every connection straight into
+the door menu — or straight into one specific door — instead of the
+normal BBS main menu, for running a dedicated, game-only install.
+Works over telnet, SSH, and rlogin.
+
+**DoorParty door-network federation**: a new admin page (Admin → Door
+Networks) to bulk-import DoorParty's catalog of shared multiplayer
+doors (LORD, TradeWars 2002, Usurper, and more) as ordinary local
+games, using the existing rlogin door-game bridge. Requires running
+the separate, independent `doorparty-connector` tool alongside
+ANetBBS; see the updated docs for setup.
+
+**File area categories and submenu sections**: file areas can now be
+grouped the same way door games already are — a new Admin → File Areas
+→ Categories page, drag-and-drop reordering (for both individual areas
+and their categories) in the web admin, and the same automatic
+numbering self-heal. A category flipped to "submenu section" collapses
+to one line in the area list (terminal and web); picking it opens a
+second screen listing just that category's own areas. File areas had
+no grouping concept at all before this.
+
+`docs/14-door-games.md`, `docs/07-file-areas.md`, `docs/28-anetbbs-cfg.md`,
+and new `docs/40-mud.md` cover all of the above.
 
 ## v1.1.47 — Five new web themes (October 2026)
 

@@ -598,6 +598,29 @@ class Config:
     FSXNET_HIDE_SYSOP = os.environ.get(
         'FSXNET_HIDE_SYSOP', 'false').lower() == 'true'
 
+    # DoorParty (dp.throwbackbbs.com) -- a shared multi-BBS door
+    # network. Real setup confirmed directly from DoorParty's own
+    # Mystic/Linux setup HOWTO (2026-10-20): a sysop runs a SEPARATE
+    # local daemon, DoorParty Connector
+    # (github.com/echicken/doorparty-connector), which holds the real
+    # DoorParty SSH/RLogin credentials and does the actual upstream
+    # connection -- ANetBBS itself never needs to know those. ANetBBS's
+    # own job is an ORDINARY LOCAL rlogin connection (via the existing,
+    # unmodified door_rlogin Game-row machinery) to
+    # 127.0.0.1:DOORPARTY_LOCAL_PORT, with the client-user field shaped
+    # "<DOORPARTY_BBS_TAG>@USER@" (tag as a literal PREFIX with no
+    # separator, substituted via the existing @USER@ template token --
+    # NOT ANetBBS's own separate rlogin_bbs_tag field, which joins with
+    # a hyphen SUFFIX for a different target; DoorParty's connector
+    # specifically expects the prefix-no-separator shape its own setup
+    # docs show) and a password that's just a local shared secret the
+    # sysop makes up (matching the connector's own Mystic example:
+    # "/USER=[NEW]@USER@ /PASS=RANDOM_CHARS"). See
+    # anetbbs/features/doorparty_import.py.
+    DOORPARTY_LOCAL_PORT = os.environ.get('DOORPARTY_LOCAL_PORT', '')
+    DOORPARTY_BBS_TAG = os.environ.get('DOORPARTY_BBS_TAG', '')
+    DOORPARTY_SHARED_SECRET = os.environ.get('DOORPARTY_SHARED_SECRET', '')
+
 
 class _EnvDatabaseURI:
     """Class-attribute descriptor: re-reads DATABASE_URL from the

@@ -56,13 +56,21 @@ class FileAreasLightbarTests(unittest.TestCase):
         with cls.app.app_context():
             db.create_all()
             # More areas than _LB_VISIBLE (15) -- the exact scenario
-            # that used to force terminal-client scrollback.
+            # that used to force terminal-client scrollback. sort_order
+            # is set explicitly, well above anything the boot-time
+            # sort_order-collision self-heal (features/file_areas.py)
+            # could ever reassign to the real bundled default areas
+            # create_app('testing') also seeds -- list_files() now
+            # orders by (sort_order, name), not name alone, so these
+            # must stay unambiguously last and in order regardless of
+            # what happens to the bundled areas' own numbers.
             for i in range(1, 21):
                 db.session.add(FileArea(
                     tag=f'AREA{i:02d}', name=f'zzz Area {i:02d}',
                     description='', is_active=True, is_subscribed=True,
                     is_sysop_only=False, min_access_level=10,
-                    upload_permission='users', storage_path=''))
+                    upload_permission='users', storage_path='',
+                    sort_order=10000 + i))
             db.session.commit()
 
     @classmethod

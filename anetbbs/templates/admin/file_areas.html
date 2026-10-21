@@ -7,7 +7,10 @@
     <h1><i class="bi bi-folder-symlink"></i> File Areas (Admin)</h1>
 </div>
 
-<div class="d-flex justify-content-end mb-3">
+<div class="d-flex justify-content-end gap-2 mb-3">
+    <a href="{{ url_for('admin.file_area_categories_admin') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-tags"></i> Categories
+    </a>
     <a href="{{ url_for('admin.file_areas_bulk_import') }}" class="btn btn-primary btn-sm">
         <i class="bi bi-upload"></i> Bulk Import (Backbone File)
     </a>
@@ -81,6 +84,13 @@
                 <select name="network_id" class="form-select">
                     <option value="">— local —</option>
                     {% for n in networks %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Category</label>
+                <select name="category" class="form-select">
+                    <option value="other">— other —</option>
+                    {% for c in categories %}<option value="{{ c.slug }}">{{ c.name }}</option>{% endfor %}
                 </select>
             </div>
             <div class="col-md-1 d-flex align-items-end">
@@ -159,11 +169,40 @@
 </div>
 {% endif %}
 
-<div class="card">
-    <div class="card-body p-0" id="fileAreaList">
-    {% if areas %}
-        {% for fa in areas %}
-        <form method="post" class="border-bottom p-2" data-network-id="{{ fa.network_id or 'none' }}">
+<div id="fileAreaList">
+{% if areas %}
+    {% for slug in cat_order %}
+    {% set cat_areas = grouped[slug] %}
+    {% set cat_label = cat_names.get(slug, slug|capitalize) %}
+    {% set is_submenu = cat_as_submenu.get(slug, False) %}
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center"
+             style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#fa-cat-{{ loop.index }}">
+            <span>
+                <i class="bi bi-chevron-down"></i>
+                <strong>{{ cat_label }}</strong>
+                <span class="badge bg-secondary">{{ cat_areas|length }}</span>
+                {% if is_submenu %}
+                <span class="badge bg-primary" title="Shown as a single submenu entry">submenu</span>
+                {% endif %}
+            </span>
+            <form method="post" action="{{ url_for('admin.renumber_file_areas') }}"
+                  onclick="event.stopPropagation();"
+                  onsubmit="return confirm('Renumber every area in {{ cat_label }} to a clean 10/20/30/... sequence? Only this category is affected.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="category" value="{{ slug }}">
+                <button type="submit" class="btn btn-sm btn-outline-primary" title="Renumber only this category's areas">
+                    <i class="bi bi-sort-numeric-down"></i> Renumber
+                </button>
+            </form>
+        </div>
+        <div class="collapse show" id="fa-cat-{{ loop.index }}">
+        <div class="card-body p-0 sortable-areas" data-category="{{ slug }}">
+        {% for fa in cat_areas %}
+        <form method="post" class="border-bottom p-2 d-flex gap-2" data-network-id="{{ fa.network_id or 'none' }}"
+              data-area-id="{{ fa.id }}">
+            <div class="drag-handle d-flex align-items-start pt-1" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></div>
+            <div class="flex-grow-1">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="area_id" value="{{ fa.id }}">
             <div class="row g-2 align-items-end">
@@ -210,6 +249,15 @@
                     <label class="form-label small mb-0">Write Level</label>
                     <input type="number" name="min_write_level" class="form-control form-control-sm" min="0" max="255" value="{{ fa.min_write_level if fa.min_write_level is not none else '' }}" placeholder="=read" title="Leave blank to use read level for uploads too">
                 </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0">Category</label>
+                    <select name="category" class="form-select form-select-sm">
+                        <option value="other" {% if (fa.category or 'other') == 'other' %}selected{% endif %}>— other —</option>
+                        {% for c in categories %}
+                        <option value="{{ c.slug }}" {% if fa.category == c.slug %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="row g-2 mt-2">
                 <div class="col-md-9">
@@ -248,20 +296,54 @@
                 <a href="{{ url_for('file_areas.view_area', area_id=fa.id) }}" class="btn btn-outline-secondary btn-sm">Browse</a>
                 <a href="{{ url_for('file_areas.manage_files', area_id=fa.id) }}" class="btn btn-outline-info btn-sm"><i class="bi bi-folder-check"></i> Manage Files</a>
             </div>
+            </div>
         </form>
         {% endfor %}
-    {% else %}
-        <div class="p-3 text-muted">No file areas configured. Create one above or wait for the first inbound TIC.</div>
-    {% endif %}
+        </div>
+        </div>
     </div>
+    {% endfor %}
+{% else %}
+    <div class="card"><div class="p-3 text-muted">No file areas configured. Create one above or wait for the first inbound TIC.</div></div>
+{% endif %}
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
+    document.querySelectorAll('.sortable-areas').forEach(function (container) {
+        new Sortable(container, {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: function () {
+                var order = Array.from(container.querySelectorAll('form[data-area-id]'))
+                    .map(function (f) { return parseInt(f.getAttribute('data-area-id'), 10); });
+                fetch("{{ url_for('admin.reorder_file_areas') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf
+                    },
+                    body: JSON.stringify({order: order})
+                }).then(function (resp) {
+                    if (resp.ok) {
+                        location.reload();
+                    }
+                });
+            }
+        });
+    });
+});
+</script>
 
 <script>
 // Client-side only -- avoids a round-trip on a page that's already fully
 // loaded with every area, and matches the existing bulk-select-network
 // dropdown's own client-side approach (same data-network-id values).
 function filterFileAreas(val) {
-    var forms = document.querySelectorAll('#fileAreaList > form[data-network-id]');
+    var forms = document.querySelectorAll('#fileAreaList form[data-network-id]');
     var shown = 0;
     forms.forEach(function (f) {
         var show = !val || f.dataset.networkId === val;

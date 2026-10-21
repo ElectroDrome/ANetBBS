@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if mob else 'New' }} Mob — Admin{% endblock %}
+{% block content %}
+<h3>{{ 'Edit' if mob else 'New' }} Mob Template</h3>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if not mob %}
+  <div class="mb-3">
+    <label class="form-label">Slug (URL-safe, permanent)</label>
+    <input type="text" class="form-control" name="slug" required>
+  </div>
+  {% endif %}
+  <div class="mb-3">
+    <label class="form-label">Name</label>
+    <input type="text" class="form-control" name="name" value="{{ mob.name if mob else '' }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Description</label>
+    <textarea class="form-control" name="description" rows="2">{{ mob.description if mob else '' }}</textarea>
+  </div>
+  <div class="row">
+    <div class="col-md-2 mb-3">
+      <label class="form-label">Level</label>
+      <input type="number" class="form-control" name="level" value="{{ mob.level if mob else 1 }}">
+    </div>
+    <div class="col-md-2 mb-3">
+      <label class="form-label">HP</label>
+      <input type="number" class="form-control" name="hp" value="{{ mob.hp if mob else 10 }}">
+    </div>
+    <div class="col-md-2 mb-3">
+      <label class="form-label">Attack</label>
+      <input type="number" class="form-control" name="attack" value="{{ mob.attack if mob else 3 }}">
+    </div>
+    <div class="col-md-2 mb-3">
+      <label class="form-label">Defense</label>
+      <input type="number" class="form-control" name="defense" value="{{ mob.defense if mob else 0 }}">
+    </div>
+    <div class="col-md-2 mb-3">
+      <label class="form-label">XP reward</label>
+      <input type="number" class="form-control" name="xp_reward" value="{{ mob.xp_reward if mob else 10 }}">
+    </div>
+    <div class="col-md-2 mb-3">
+      <label class="form-label">Gold reward</label>
+      <input type="number" class="form-control" name="gold_reward" value="{{ mob.gold_reward if mob else 5 }}">
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Save</button>
+  <a href="{{ url_for('mud_admin.list_mobs') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

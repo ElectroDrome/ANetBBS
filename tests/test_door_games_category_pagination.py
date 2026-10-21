@@ -64,7 +64,14 @@ def _strip_ansi(text):
 
 
 def _make_games(n):
-    return [{'id': i, 'name': f'Synthetic Door {i:03d}', 'game_type': 'door_native'}
+    # 'sort_order' matches each game's own position here by construction
+    # (this fixture already meant "door N" in order) -- required since
+    # _show_category_submenu() displays/resolves each game by its own
+    # sort_order, not a recomputed page-relative rank (Game Center
+    # admin UX fix) -- see test_door_games_stable_numbering.py for the
+    # dedicated regression coverage of that fix itself.
+    return [{'id': i, 'name': f'Synthetic Door {i:03d}', 'game_type': 'door_native',
+            'sort_order': i}
            for i in range(1, n + 1)]
 
 

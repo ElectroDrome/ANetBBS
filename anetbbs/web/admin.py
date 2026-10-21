@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, current_app
 from flask_login import login_required, current_user
 from wtforms import StringField, TextAreaField, SubmitField, BooleanField, PasswordField, IntegerField
-from wtforms.validators import DataRequired, Length, Optional, ValidationError, NumberRange
+from wtforms.validators import (DataRequired, Length, Optional, ValidationError,
+                                NumberRange, Regexp)
 from flask_wtf import FlaskForm
 
 from sqlalchemy.exc import IntegrityError
@@ -1796,12 +1797,27 @@ def _resolve_storage_dir(storage_path, create_dir, tag):
         return False
 
 
+class FileAreaCategoryForm(FlaskForm):
+    """Add/Edit file-area category form -- mirrors games_admin.py's own
+    GameCategoryForm exactly."""
+    name = StringField('Category Name', validators=[DataRequired(), Length(max=80)])
+    slug = StringField('Slug (URL-safe)', validators=[
+        DataRequired(), Length(max=80),
+        Regexp(r'^[A-Za-z0-9_-]+$',
+               message='Slug may only contain letters, numbers, hyphens, and underscores.')])
+    sort_order = IntegerField('Sort Order', validators=[Optional()], default=0)
+    as_submenu = BooleanField(
+        'Show as a submenu section (instead of listing areas inline)',
+        default=False)
+    submit = SubmitField('Save Category')
+
+
 @admin_bp.route('/file-areas', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def file_areas_admin():
     """List/edit file areas — sysop tool."""
-    from ..models import FileArea, EchomailNetwork
+    from ..models import FileArea, FileAreaCategory, EchomailNetwork
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -1811,6 +1827,7 @@ def file_areas_admin():
             description = (request.form.get('description') or '').strip() or None
             storage_path = (request.form.get('storage_path') or '').strip()
             net_id = request.form.get('network_id', type=int) or None
+            category = (request.form.get('category') or 'other').strip() or 'other'
             create_dir = bool(request.form.get('create_storage_dir'))
             if not tag:
                 flash('Tag required.', 'danger')
@@ -1823,13 +1840,14 @@ def file_areas_admin():
                     tag=tag, name=name or tag,
                     description=description,
                     storage_path=storage_path or None,
-                    network_id=net_id,
+                    network_id=net_id, category=category,
                     is_active=True, is_subscribed=True)
                 db.session.add(fa)
                 db.session.commit()
                 flash(f'Created area {tag}.', 'success')
         elif action == 'update':
             fa = FileArea.query.get_or_404(request.form.get('area_id', type=int))
+            fa.category = (request.form.get('category') or 'other').strip() or 'other'
             fa.name = (request.form.get('name') or fa.name).strip()
             new_storage_path = (request.form.get('storage_path') or '').strip()
             create_dir = bool(request.form.get('create_storage_dir'))
@@ -1867,9 +1885,205 @@ def file_areas_admin():
             flash(f'Deleted {tag}.', 'success')
         return redirect(url_for('admin.file_areas_admin'))
 
-    areas = FileArea.query.order_by(FileArea.tag).all()
+    areas = FileArea.query.order_by(FileArea.sort_order, FileArea.tag).all()
     networks = EchomailNetwork.query.filter_by(is_active=True).all()
-    return render_template('admin/file_areas.html', areas=areas, networks=networks)
+    categories = FileAreaCategory.query.order_by(
+        FileAreaCategory.sort_order, FileAreaCategory.name).all()
+    grouped = {}
+    for fa in areas:
+        grouped.setdefault(fa.category or 'other', []).append(fa)
+    cat_names = {c.slug: c.name for c in categories}
+    cat_as_submenu = {c.slug: bool(c.as_submenu) for c in categories}
+    # Preserve first-seen order of categories as they appear among the
+    # already sort_order-ordered areas, same convention games_admin.py's
+    # own list_games() uses, so the admin list visually matches what a
+    # caller actually sees browsing file areas.
+    cat_order = []
+    seen = set()
+    for fa in areas:
+        slug = fa.category or 'other'
+        if slug not in seen:
+            seen.add(slug)
+            cat_order.append(slug)
+    return render_template('admin/file_areas.html', areas=areas, networks=networks,
+                           categories=categories, grouped=grouped, cat_names=cat_names,
+                           cat_as_submenu=cat_as_submenu, cat_order=cat_order)
+
+
+# ---------------------------------------------------------------------------
+# File-area categories -- mirrors games_admin.py's own GameCategory CRUD +
+# drag-and-drop reorder routes exactly (same model shape: name/slug/
+# sort_order/as_submenu), added because file areas had no grouping concept
+# at all until a sysop pointed out the gap.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route('/file-areas/categories')
+@login_required
+@admin_required
+def file_area_categories_admin():
+    from ..models import FileAreaCategory
+    cats = FileAreaCategory.query.order_by(
+        FileAreaCategory.sort_order, FileAreaCategory.name).all()
+    return render_template('admin/file_area_categories.html', categories=cats)
+
+
+@admin_bp.route('/file-areas/categories/add', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def add_file_area_category():
+    from ..models import FileAreaCategory
+    form = FileAreaCategoryForm()
+    if form.validate_on_submit():
+        cat = FileAreaCategory(
+            name=form.name.data,
+            slug=form.slug.data,
+            sort_order=form.sort_order.data or 0,
+            as_submenu=form.as_submenu.data,
+        )
+        db.session.add(cat)
+        db.session.commit()
+        flash(f'Category "{cat.name}" added.', 'success')
+        return redirect(url_for('admin.file_area_categories_admin'))
+    return render_template('admin/file_area_category_form.html', form=form, category=None)
+
+
+@admin_bp.route('/file-areas/categories/<int:cat_id>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def edit_file_area_category(cat_id):
+    from ..models import FileAreaCategory
+    cat = FileAreaCategory.query.get_or_404(cat_id)
+    form = FileAreaCategoryForm(obj=cat)
+    if form.validate_on_submit():
+        cat.name = form.name.data
+        cat.slug = form.slug.data
+        cat.sort_order = form.sort_order.data or 0
+        cat.as_submenu = form.as_submenu.data
+        db.session.commit()
+        flash(f'Category "{cat.name}" updated.', 'success')
+        return redirect(url_for('admin.file_area_categories_admin'))
+    return render_template('admin/file_area_category_form.html', form=form, category=cat)
+
+
+@admin_bp.route('/file-areas/categories/<int:cat_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_file_area_category(cat_id):
+    from ..models import FileAreaCategory
+    cat = FileAreaCategory.query.get_or_404(cat_id)
+    name = cat.name
+    db.session.delete(cat)
+    db.session.commit()
+    flash(f'Category "{name}" deleted.', 'success')
+    return redirect(url_for('admin.file_area_categories_admin'))
+
+
+@admin_bp.route('/file-areas/categories/reorder', methods=['POST'])
+@login_required
+@admin_required
+def reorder_file_area_categories():
+    """Bulk reorder, posted by the admin categories page's drag-and-drop
+    UI. Only as_submenu=True categories that currently show a numbered
+    stand-in line at all (at least one visible active area) consume a
+    slot in the sequence -- see games_admin.py's reorder_categories()
+    for the full reasoning, identical here. Assigns a plain 1, 2, 3, ...
+    run, not a gapped one -- a file-area category's number is a short
+    navigational list label, not something hardcoded into per-area art."""
+    from flask import jsonify
+    from ..models import FileArea, FileAreaCategory
+    payload = request.get_json(silent=True) or {}
+    try:
+        order = [int(cid) for cid in (payload.get('order') or [])]
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'invalid order payload'}), 400
+    if not order:
+        return jsonify({'ok': False, 'error': 'empty order'}), 400
+    cats_by_id = {c.id: c for c in FileAreaCategory.query.filter(
+        FileAreaCategory.id.in_(order)).all()}
+    active_cat_slugs = {fa.category for fa in FileArea.query.filter_by(is_active=True).all()}
+    next_num = 0
+    for cid in order:
+        c = cats_by_id.get(cid)
+        if c is None or not c.as_submenu or c.slug not in active_cat_slugs:
+            continue
+        next_num += 1
+        c.sort_order = next_num
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@admin_bp.route('/file-areas/categories/renumber', methods=['POST'])
+@login_required
+@admin_required
+def renumber_file_area_categories():
+    """One-click clean 1, 2, 3, ... renumber for every as_submenu=True
+    file-area category that currently shows a numbered line at all --
+    mirrors games_admin.py's renumber_categories() exactly."""
+    from ..models import FileArea, FileAreaCategory
+    active_cat_slugs = {fa.category for fa in FileArea.query.filter_by(is_active=True).all()}
+    cats = [c for c in FileAreaCategory.query.filter_by(as_submenu=True)
+            .order_by(FileAreaCategory.sort_order, FileAreaCategory.name).all()
+            if c.slug in active_cat_slugs]
+    for i, c in enumerate(cats, start=1):
+        c.sort_order = i
+    db.session.commit()
+    flash(f'Renumbered {len(cats)} submenu categor{"y" if len(cats) == 1 else "ies"}.',
+         'success')
+    return redirect(url_for('admin.file_area_categories_admin'))
+
+
+@admin_bp.route('/file-areas/reorder', methods=['POST'])
+@login_required
+@admin_required
+def reorder_file_areas():
+    """Bulk reorder, posted by the admin file-areas list page's
+    drag-and-drop UI -- same shape as games_admin.py's reorder_games():
+    a JSON body `{"order": [area_id, ...]}` in the new desired order,
+    writes back gapped sort_order values (10, 20, 30, ...) so a sysop
+    can insert a new area later between two existing ones without
+    renumbering anything else. Only touches areas actually present in
+    `order`."""
+    from flask import jsonify
+    from ..models import FileArea
+    payload = request.get_json(silent=True) or {}
+    try:
+        order = [int(aid) for aid in (payload.get('order') or [])]
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'invalid order payload'}), 400
+    if not order:
+        return jsonify({'ok': False, 'error': 'empty order'}), 400
+    areas_by_id = {fa.id: fa for fa in FileArea.query.filter(FileArea.id.in_(order)).all()}
+    for i, aid in enumerate(order):
+        fa = areas_by_id.get(aid)
+        if fa is not None:
+            fa.sort_order = (i + 1) * 10
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@admin_bp.route('/file-areas/renumber', methods=['POST'])
+@login_required
+@admin_required
+def renumber_file_areas():
+    """One-click clean renumber for ALL file areas (or, with a
+    `category` form field, just one category's areas), in their
+    current effective order -- mirrors games_admin.py's
+    renumber_games() exactly, including the same per-category scoping
+    so fixing one broken/colliding category doesn't reshuffle every
+    other category's own numbers."""
+    from ..models import FileArea
+    category = (request.form.get('category') or '').strip()
+    q = FileArea.query
+    if category:
+        q = q.filter_by(category=category)
+    areas = q.order_by(FileArea.sort_order, FileArea.tag).all()
+    for i, fa in enumerate(areas):
+        fa.sort_order = (i + 1) * 10
+    db.session.commit()
+    scope = f'"{category}"' if category else 'all'
+    flash(f'Renumbered {len(areas)} area(s) in {scope} to a clean 10/20/30/... sequence.',
+         'success')
+    return redirect(url_for('admin.file_areas_admin'))
 
 
 @admin_bp.route('/file-areas/bulk', methods=['POST'])

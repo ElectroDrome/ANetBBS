@@ -40,7 +40,12 @@ class _StdioSession:
     def __init__(self, reader: asyncio.StreamReader):
         self._reader = reader
         _username = os.environ.get('BBS_USERNAME', 'player')
+        try:
+            _user_id = int(os.environ.get('BBS_USER_ID', '0') or 0) or None
+        except ValueError:
+            _user_id = None
         self.user = {
+            'id':           _user_id,
             'username':     _username,
             'display_name': os.environ.get('BBS_REAL_NAME', _username),
             'access_level': int(os.environ.get('BBS_SECURITY', '50')),
@@ -59,12 +64,22 @@ class _StdioSession:
         return await self._reader.read(n)
 
     async def read_line(self, prompt: str = '') -> str:
+        """Real bug found live: this never echoed typed input at all --
+        door_runner.py puts the PTY slave in raw mode (tty.setraw(0)) so
+        there's no terminal-level local echo to fall back on either, the
+        same reasoning real BBSSession.read_line() documents for why IT
+        echoes explicitly (anetbbs/core/session.py). A player typing
+        their character name or class choice saw nothing appear at all.
+        Mirrors that method's own echo convention exactly: echo each
+        printable character as it's read, echo '\\r\\n' on Enter, and the
+        same backspace erase-in-place sequence this already had."""
         if prompt:
             await self.write(prompt)
         line = b''
         while True:
             ch = await self._reader.read(1)
             if not ch or ch in (b'\r', b'\n'):
+                await self.write('\r\n')
                 break
             if ch in (b'\x08', b'\x7f'):
                 if line:
@@ -72,10 +87,27 @@ class _StdioSession:
                     await self.write('\x08 \x08')
             else:
                 line += ch
+                await self.write(ch.decode('cp437', errors='replace'))
         return line.decode('cp437', errors='replace')
 
 
-async def _run(fn, username: str):
+async def _run(fn, username: str, app):
+    """Runs `fn` for the whole interactive game session inside a pushed
+    Flask app context -- this subprocess has no ambient Flask app of its
+    own (unlike the in-process telnet/SSH/rlogin Game Center path, which
+    runs inside anetbbs.service's own long-lived app context), so any
+    builtin_python game that touches the database (MudCharacter.query,
+    etc. -- the first one that actually needed this) would otherwise hit
+    "Working outside of application context" the instant it queried.
+    Confirmed real: this is exactly what broke The Shattered Realm when
+    launched from the web UI even after the earlier BBS_USER_ID fix.
+    """
+    from anetbbs.features.db_scope import transient_app_context
+    with transient_app_context(app):
+        await _play(fn, username)
+
+
+async def _play(fn, username: str):
     loop = asyncio.get_running_loop()
 
     # Pipe-based stdin relay: a background thread blocks on os.read(0)
@@ -148,8 +180,15 @@ def main():
     except Exception:
         pass
 
+    from flask import Flask
+    from anetbbs.config import get_config
+    from anetbbs.models import db
+    app = Flask(__name__)
+    app.config.from_object(get_config(os.environ.get('FLASK_ENV', 'production')))
+    db.init_app(app)
+
     try:
-        asyncio.run(_run(fn, username))
+        asyncio.run(_run(fn, username, app))
     finally:
         if old_tc is not None:
             try:

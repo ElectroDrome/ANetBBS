@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}MUD Mobs — Admin{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3><i class="bi bi-bug"></i> Mob Templates</h3>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('mud_admin.new_mob') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle"></i> Add Mob</a>
+    <a href="{{ url_for('mud_admin.index') }}" class="btn btn-primary btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+  </div>
+</div>
+<table class="table table-striped table-sm">
+  <thead><tr><th>Name</th><th>Slug</th><th>Level</th><th>HP</th><th>Atk</th><th>Def</th><th>XP</th><th>Gold</th><th></th></tr></thead>
+  <tbody>
+    {% for mob in mobs %}
+    <tr>
+      <td>{{ mob.name }}</td>
+      <td><code>{{ mob.slug }}</code></td>
+      <td>{{ mob.level }}</td>
+      <td>{{ mob.hp }}</td>
+      <td>{{ mob.attack }}</td>
+      <td>{{ mob.defense }}</td>
+      <td>{{ mob.xp_reward }}</td>
+      <td>{{ mob.gold_reward }}</td>
+      <td>
+        <a href="{{ url_for('mud_admin.edit_mob', mob_id=mob.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-pencil"></i></a>
+        <form method="post" action="{{ url_for('mud_admin.delete_mob', mob_id=mob.id) }}" style="display:inline;"
+              onsubmit="return confirm('Delete {{ mob.name }}?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm" style="background:#330000;border:1px solid #ff0000;color:#ff0000;"><i class="bi bi-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="text-center" style="color:#007700;">No mobs yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

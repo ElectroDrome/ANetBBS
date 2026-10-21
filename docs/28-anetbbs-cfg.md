@@ -137,10 +137,14 @@ compression on/off remotely for themselves via the AreaFix
 either side — see [06 — Echomail](06-echomail.md).
 
 ### File Areas
-Tag, name, description, storage path, access/upload levels, upload
-permission (users/sysop/none), active/subscribed/sysop-only flags,
-area password, and WaZOO FREQ settings (allow-FREQ toggle + optional
-FREQ password — see [06 — Echomail](06-echomail.md) for what FREQ is).
+Two sub-screens, mirroring the Games section's own shape: **File
+Areas** (tag, name, description, storage path, category, sort order,
+access/upload levels, upload permission (users/sysop/none),
+active/subscribed/sysop-only flags, area password, and WaZOO FREQ
+settings — allow-FREQ toggle + optional FREQ password, see
+[06 — Echomail](06-echomail.md) for what FREQ is) and **Categories**
+(name, slug, sort order, submenu flag — see
+[07 — File Areas](07-file-areas.md#categories-and-submenu-sections)).
 **Web admin only:** which echomail network a file area's TIC routing
 belongs to (reassigning it is rare and interacts with routing, so it's
 read-only here).

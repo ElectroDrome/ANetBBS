@@ -8,11 +8,26 @@
         <a href="{{ url_for('games_admin.add_category') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-circle"></i> Add Category
         </a>
+        <form method="post" action="{{ url_for('games_admin.renumber_categories') }}" style="display:inline;"
+              onsubmit="return confirm('Renumber every category to a clean 10/20/30/... sequence? For a category shown as a submenu entry, this is the number a player types in the top-level door menu -- update any hand-made ANSI door-menu art to match afterwards.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-primary" title="Auto-renumber all categories">
+                <i class="bi bi-sort-numeric-down"></i> Renumber
+            </button>
+        </form>
         <a href="{{ url_for('games_admin.dashboard') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-arrow-left"></i> Dashboard
         </a>
     </div>
 </div>
+
+<p class="small" style="color:#888;">
+    <i class="bi bi-info-circle"></i>
+    For a category shown as a <strong>submenu section</strong>, <code>Sort Order</code> is the exact
+    number a player types in the top-level terminal door menu to enter it. Drag the
+    <i class="bi bi-grip-vertical"></i> handle to reorder; dropping writes new gapped Sort Order
+    values automatically.
+</p>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
 {% if messages %}
@@ -22,9 +37,10 @@
 {% endif %}
 {% endwith %}
 
-<table class="table table-striped">
+<table class="table table-striped sortable-categories">
     <thead>
         <tr>
+            <th style="width:2em;"></th>
             <th>Name</th>
             <th>Slug</th>
             <th>Sort Order</th>
@@ -34,10 +50,11 @@
     </thead>
     <tbody>
         {% for cat in categories %}
-        <tr>
+        <tr data-category-id="{{ cat.id }}">
+            <td class="drag-handle" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></td>
             <td>{{ cat.name }}</td>
             <td><code>{{ cat.slug }}</code></td>
-            <td>{{ cat.sort_order }}</td>
+            <td><code>{{ cat.sort_order }}</code></td>
             <td>
                 {% if cat.as_submenu %}
                 <span class="badge bg-primary">Submenu section</span>
@@ -64,7 +81,7 @@
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="text-center" style="color:#007700;">No categories yet.</td></tr>
+        <tr><td colspan="6" class="text-center" style="color:#007700;">No categories yet.</td></tr>
         {% endfor %}
     </tbody>
 </table>
@@ -74,4 +91,36 @@
     The <strong>slug</strong> is stored on each game. Renaming a slug here won't update existing games —
     edit the game to reassign it. Deleting a category does not affect games; they keep their slug value.
 </p>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
+    document.querySelectorAll('table.sortable-categories tbody').forEach(function (tbody) {
+        new Sortable(tbody, {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: function () {
+                var order = Array.from(tbody.querySelectorAll('tr[data-category-id]'))
+                    .map(function (tr) { return parseInt(tr.getAttribute('data-category-id'), 10); });
+                fetch("{{ url_for('games_admin.reorder_categories') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf
+                    },
+                    body: JSON.stringify({order: order})
+                }).then(function (resp) {
+                    if (resp.ok) {
+                        location.reload();
+                    }
+                });
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

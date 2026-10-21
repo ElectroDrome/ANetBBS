@@ -14,29 +14,36 @@
     </a>
 </div>
 
-<div class="card">
-    <div class="card-body p-0">
-    {% if rows %}
-        <table class="table table-sm table-hover mb-0">
-            <thead><tr>
-                <th>Tag</th><th>Name</th><th>Files</th><th>Total Size</th>
-                <th>Description</th>
-            </tr></thead>
-            <tbody>
-            {% for r in rows %}
-                <tr>
-                    <td><code><a href="{{ url_for('file_areas.view_area', area_id=r.area.id) }}">{{ r.area.tag }}</a></code></td>
-                    <td>{{ r.area.name or '' }}</td>
-                    <td>{{ r.count }}</td>
-                    <td>{{ '%.1f'|format(r.total_size / 1024) }} KB</td>
-                    <td><small class="text-muted">{{ r.area.description or '' }}</small></td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <div class="p-3 text-muted">No file areas yet — they'll appear after the first inbound TIC arrives.</div>
-    {% endif %}
+{% if rows %}
+    {% for slug in cat_order %}
+    {% set cat_rows = grouped[slug] %}
+    {% set cat_label = cat_names.get(slug, slug|capitalize) %}
+    <div class="card mb-3">
+        <div class="card-header"><strong>{{ cat_label }}</strong>
+            <span class="badge bg-secondary">{{ cat_rows|length }}</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead><tr>
+                    <th>Tag</th><th>Name</th><th>Files</th><th>Total Size</th>
+                    <th>Description</th>
+                </tr></thead>
+                <tbody>
+                {% for r in cat_rows %}
+                    <tr>
+                        <td><code><a href="{{ url_for('file_areas.view_area', area_id=r.area.id) }}">{{ r.area.tag }}</a></code></td>
+                        <td>{{ r.area.name or '' }}</td>
+                        <td>{{ r.count }}</td>
+                        <td>{{ '%.1f'|format(r.total_size / 1024) }} KB</td>
+                        <td><small class="text-muted">{{ r.area.description or '' }}</small></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-</div>
+    {% endfor %}
+{% else %}
+    <div class="card"><div class="p-3 text-muted">No file areas yet — they'll appear after the first inbound TIC arrives.</div></div>
+{% endif %}
 {% endblock %}

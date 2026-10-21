@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if item else 'New' }} Item — Admin{% endblock %}
+{% block content %}
+<h3>{{ 'Edit' if item else 'New' }} Item</h3>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if not item %}
+  <div class="mb-3">
+    <label class="form-label">Slug (URL-safe, permanent)</label>
+    <input type="text" class="form-control" name="slug" required>
+  </div>
+  {% endif %}
+  <div class="mb-3">
+    <label class="form-label">Name</label>
+    <input type="text" class="form-control" name="name" value="{{ item.name if item else '' }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Description</label>
+    <textarea class="form-control" name="description" rows="2">{{ item.description if item else '' }}</textarea>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Type</label>
+    <select class="form-select" name="item_type">
+      {% for t in item_type_choices %}
+      <option value="{{ t }}" {{ 'selected' if item and item.item_type == t }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="row">
+    <div class="col-md-3 mb-3">
+      <label class="form-label">Attack bonus</label>
+      <input type="number" class="form-control" name="attack_bonus" value="{{ item.attack_bonus if item else 0 }}">
+    </div>
+    <div class="col-md-3 mb-3">
+      <label class="form-label">Defense bonus</label>
+      <input type="number" class="form-control" name="defense_bonus" value="{{ item.defense_bonus if item else 0 }}">
+    </div>
+    <div class="col-md-3 mb-3">
+      <label class="form-label">Heal amount</label>
+      <input type="number" class="form-control" name="heal_amount" value="{{ item.heal_amount if item else 0 }}">
+    </div>
+    <div class="col-md-3 mb-3">
+      <label class="form-label">Value (gold)</label>
+      <input type="number" class="form-control" name="value" value="{{ item.value if item else 0 }}">
+    </div>
+  </div>
+  <div class="form-check mb-3">
+    <input class="form-check-input" type="checkbox" name="is_shop_stock" id="is_shop_stock" {{ 'checked' if item and item.is_shop_stock }}>
+    <label class="form-check-label" for="is_shop_stock">Sold at the village shop</label>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Required class</label>
+    <select class="form-select" name="required_class">
+      {% for cls in required_class_choices %}
+      <option value="{{ cls }}" {{ 'selected' if item and (item.required_class or '') == cls }}>{{ cls if cls else 'Any class' }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text">Only a weapon/armor needs this -- leave as "Any class" for everything else.</div>
+  </div>
+  <button type="submit" class="btn btn-primary">Save</button>
+  <a href="{{ url_for('mud_admin.list_items') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

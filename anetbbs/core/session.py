@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import textwrap
+import zlib
 from datetime import datetime
 from .tz import fmt_eastern
 from typing import Dict, Optional, Any
@@ -318,6 +319,15 @@ AUTHENTICATION = bytes([37])  # Authentication Option
 ENCRYPT = bytes([38])  # Encryption Option
 NEW_ENVIRON = bytes([39])  # New Environment Option
 
+# MUD telnet protocol extensions -- real option numbers pulled from
+# tintin.mudhalla.net (the canonical MUD-protocol reference), not
+# guessed. Not part of RFC 854's own option table above; these are
+# MUD-community-specific conventions layered on top of ordinary telnet
+# IAC/SB/SE negotiation. See mud_protocol_negotiate_start().
+MSSP = bytes([70])   # MUD Server Status Protocol
+MCCP2 = bytes([86])  # MUD Client Compression Protocol v2
+GMCP = bytes([201])  # Generic MUD Communication Protocol
+
 class BBSSession:
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                  config: Dict[str, Any], prefill_username: Optional[str] = None,
@@ -431,6 +441,19 @@ class BBSSession:
         self._prefill_authenticated_user = prefill_authenticated_user or None
         self.buffer = bytearray()
         self.telnet_command_buffer = bytearray()
+        # MUD telnet protocol extensions (MSSP/MCCP2/GMCP) -- off by
+        # default for every ordinary BBS session, flipped on only by a
+        # door that wants to speak them (see
+        # mud_protocol_negotiate_start()/_stop()). self._mud_mssp_vars
+        # is a plain dict such a door can populate with real NAME/
+        # PLAYERS/UPTIME (and any optional MSSP variables) before/while
+        # MUD protocol mode is active -- _build_mssp_payload() supplies
+        # generic fallbacks for whichever of the three required ones
+        # aren't set, so this never sends nothing even if a door forgets.
+        self._mud_protocol_mode = False
+        self._mud_mssp_vars: Dict[str, Any] = {}
+        self._mud_gmcp_enabled = False
+        self._mccp2_compressor = None
         self._echo_on = True
         self._line_mode = False
         self._binary_mode = False
@@ -2631,6 +2654,27 @@ class BBSSession:
                         self.telnet_command_buffer = bytearray(data[i:])
                         break
                     option = data[i+2:i+3]
+                    # React to the client's reply to one of OUR OWN
+                    # offers (mud_protocol_negotiate_start() sends IAC
+                    # WILL MSSP/MCCP2/GMCP) -- every other WILL/WONT/DO/
+                    # DONT byte triple is parsed structurally (so the
+                    # surrounding sequence is still consumed correctly)
+                    # but otherwise discarded, unchanged from before.
+                    if getattr(self, '_mud_protocol_mode', False) and command == DO:
+                        if option == MSSP:
+                            self.writer.write(self._build_mssp_payload())
+                            await self._drain_protected()
+                        elif option == MCCP2 and self._mccp2_compressor is None:
+                            # Real spec (tintin.mudhalla.net/protocols/
+                            # mccp/): send IAC SB MCCP2 IAC SE
+                            # UNCOMPRESSED, then create the zlib stream
+                            # -- compression starts AFTER this exact
+                            # point, never retroactively.
+                            self.writer.write(IAC + SB + MCCP2 + IAC + SE)
+                            await self._drain_protected()
+                            self._mccp2_compressor = zlib.compressobj()
+                        elif option == GMCP:
+                            self._mud_gmcp_enabled = True
                     i += 3
                     continue
 
@@ -2682,6 +2726,100 @@ class BBSSession:
             i += 1
 
         return bytes(result)
+
+    def _build_mssp_payload(self):
+        """IAC SB MSSP MSSP_VAR "name" MSSP_VAL "value" ... IAC SE --
+        real wire format from tintin.mudhalla.net/protocols/mssp/, sent
+        in reply to the client's IAC DO MSSP (see
+        handle_telnet_command()'s WILL/WONT/DO/DONT branch). NAME/
+        PLAYERS/UPTIME are the three REQUIRED variables -- a door
+        activating MUD protocol mode populates self._mud_mssp_vars with
+        real values; generic fallbacks here so this never sends
+        nothing just because a door forgot one."""
+        MSSP_VAR = bytes([1])
+        MSSP_VAL = bytes([2])
+        merged = {'NAME': os.environ.get('BBS_NAME', 'ANetBBS'),
+                 'PLAYERS': '0', 'UPTIME': '0'}
+        merged.update(self._mud_mssp_vars or {})
+        payload = bytearray()
+        for name, value in merged.items():
+            payload += MSSP_VAR + str(name).encode('ascii', errors='replace')
+            payload += MSSP_VAL + str(value).encode('ascii', errors='replace')
+        return IAC + SB + MSSP + bytes(payload) + IAC + SE
+
+    async def mud_protocol_negotiate_start(self, mssp_vars=None):
+        """Called by a door (e.g. a native MUD) that wants to speak
+        MUD-client telnet extensions to whoever's connected. Flips on
+        self._mud_protocol_mode so handle_telnet_command()'s WILL/WONT/
+        DO/DONT branch reacts to the client's replies, and proactively
+        offers all three (real specs from tintin.mudhalla.net, pulled
+        directly, not guessed):
+
+          - MSSP (option 70): we send IAC WILL MSSP; on the client's
+            own IAC DO MSSP, we send the IAC SB MSSP ... IAC SE
+            variable dump (see _build_mssp_payload()). Lets MUD
+            crawlers/listing sites and MUD clients identify the game.
+          - MCCP2 (option 86): we send IAC WILL MCCP2; on IAC DO MCCP2,
+            we send IAC SB MCCP2 IAC SE and EVERY subsequent write()
+            call is zlib-compressed from that exact point on (see
+            write()'s own MCCP2 branch).
+          - GMCP (option 201): we send IAC WILL GMCP; on IAC DO GMCP,
+            both sides may send IAC SB GMCP <package.cmd> <json> IAC SE
+            freely (see send_gmcp()).
+
+        No-op for 'enhanced' (the Enhanced Client's WebSocket/JSON
+        transport, not real telnet at all) and 'petscii' (real C64/128
+        hardware or emulators, which don't speak any of this) --
+        matching this file's own existing term_mode exclusions for
+        other telnet/binary-ish features nearby in start().
+
+        `mssp_vars`: optional dict merged into self._mud_mssp_vars
+        (NAME/PLAYERS/UPTIME plus any optional MSSP variable the door
+        wants to advertise) -- a door may also just assign
+        self._mud_mssp_vars directly at any point while this mode is
+        active (e.g. to keep PLAYERS current)."""
+        if self.term_mode in ('enhanced', 'petscii'):
+            return
+        self._mud_protocol_mode = True
+        if mssp_vars:
+            self._mud_mssp_vars.update(mssp_vars)
+        self.writer.write(IAC + WILL + MSSP)
+        self.writer.write(IAC + WILL + MCCP2)
+        self.writer.write(IAC + WILL + GMCP)
+        await self._drain_protected()
+
+    async def mud_protocol_negotiate_stop(self):
+        """Leaving a MUD door -- end any active MCCP2 compression
+        stream cleanly (a final flush so the client's decompressor
+        sees a proper end rather than truncated output) before the
+        session returns to ordinary BBS menus/text, which must NOT be
+        compressed."""
+        if self._mccp2_compressor is not None:
+            try:
+                tail = self._mccp2_compressor.flush()
+                if tail:
+                    self.writer.write(tail)
+                    await self._drain_protected()
+            except Exception:
+                pass
+            self._mccp2_compressor = None
+        self._mud_gmcp_enabled = False
+        self._mud_protocol_mode = False
+        self._mud_mssp_vars = {}
+
+    async def send_gmcp(self, package: str, data=None):
+        """Send one IAC SB GMCP <package.cmd> <json> IAC SE message --
+        real framing from tintin.mudhalla.net/protocols/gmcp/. `data`
+        is optional; when given it's JSON-encoded (the real spec
+        requires JSON, UTF-8). No-op if the client never accepted our
+        GMCP offer (self._mud_gmcp_enabled), so a door can call this
+        unconditionally without checking first."""
+        if not self._mud_gmcp_enabled:
+            return
+        import json as _json
+        msg = package if data is None else f'{package} {_json.dumps(data)}'
+        self.writer.write(IAC + SB + GMCP + msg.encode('utf-8', errors='replace') + IAC + SE)
+        await self._drain_protected()
 
     def _reader_stored_exception(self):
         """Real live incident (2026-09-20, an operator's py-spy capture +
@@ -2836,6 +2974,27 @@ class BBSSession:
                 text = petscii_codec.encode(petscii_codec.ansi_to_petscii(text.decode('latin-1')))
             elif self.term_mode == 'ascii':
                 text = _ANSI_ESC_RE_B.sub(b'', text)
+            # getattr(..., None), not a bare attribute access: several
+            # test harnesses in this codebase build a BBSSession via
+            # object.__new__(BBSSession), skipping __init__ entirely
+            # (confirmed real -- test_aneview_disconnect_busy_loop.py's
+            # WriteDrainStoredExceptionTests does exactly this), so
+            # this attribute isn't guaranteed to exist on every
+            # instance. A bare access raised AttributeError here, which
+            # the broad `except Exception` below then silently
+            # swallowed -- returning early and never reaching the real
+            # self.writer.write()/drain() this method exists to do at
+            # all. Found via two existing tests failing for the wrong
+            # reason (CarrierLost never raised), not guessed.
+            _mccp2 = getattr(self, '_mccp2_compressor', None)
+            if _mccp2 is not None:
+                # Z_SYNC_FLUSH per write() call (not Z_NO_FLUSH) --
+                # without it, zlib can buffer compressed bytes
+                # internally waiting for more input before emitting
+                # anything, which would stall the client's own
+                # incremental decompression/rendering of what should
+                # be ordinary, promptly-delivered BBS text.
+                text = _mccp2.compress(text) + _mccp2.flush(zlib.Z_SYNC_FLUSH)
             self.writer.write(text)
         except (BrokenPipeError, ConnectionResetError,
                 ConnectionAbortedError):
@@ -3355,6 +3514,32 @@ class BBSSession:
             # Never block login on broadcast surfacing failure.
             pass
 
+    def _read_env_file_value(self, key: str, default: str = '') -> str:
+        """Reads ONE key's raw value directly from the install's .env
+        file on disk, bypassing os.environ/config.py's Config class
+        entirely -- so a sysop's edit takes effect on the very next
+        login, no restart needed. This is the shared form of the
+        inline read FAST_LOGON_ENABLED originally had here (now
+        refactored to call this too) -- a per-file inline helper
+        method rather than a config.py attribute specifically BECAUSE
+        config.py's attributes are read once at process start, which
+        is the opposite of what a live-reload setting like this one
+        needs. Used by GAMESERVER_MODE_ENABLED/
+        GAMESERVER_DEFAULT_DOOR_SLUG and FAST_LOGON_ENABLED below."""
+        try:
+            env_path = os.path.abspath(os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), '..', '..', '.env'))
+            with open(env_path) as f:
+                for line in f:
+                    if line.startswith(key + '='):
+                        return line.split('=', 1)[1].strip()
+        except Exception:
+            pass
+        return default
+
+    def _read_env_file_bool(self, key: str) -> bool:
+        return self._read_env_file_value(key, '').strip().lower() in ('true', '1', 'yes')
+
     async def _launch_direct_door(self, slug: str) -> bool:
         """Resolve `slug` (from an rlogin xtrn= handshake, see
         rlogin_server.py / self._direct_door_slug) to a Game row and
@@ -3684,6 +3869,34 @@ class BBSSession:
                 # interactive session rather than stranding an otherwise-
                 # validly-authenticated user with no way in.
 
+            # Standalone game-server deployment mode -- an entire install
+            # dedicated to being a door-game server, no BBS menus at all
+            # (Jerry's own description of his existing separate Synchronet
+            # install: rlogin-only, straight to the game menu). Same
+            # live-without-restart .env read as FAST_LOGON_ENABLED just
+            # below (not routed through config.py's Config class) --
+            # this is a boot-sequence-skip toggle of the identical shape,
+            # and a sysop running a dedicated game-server install should
+            # be able to flip it on/off without a full restart.
+            #
+            # Deliberately checked AFTER _direct_door_slug above, not
+            # before: a per-CONNECTION xtrn=<slug> request (the more
+            # specific ask) always wins over this site-wide default.
+            if self._read_env_file_bool('GAMESERVER_MODE_ENABLED'):
+                default_slug = self._read_env_file_value('GAMESERVER_DEFAULT_DOOR_SLUG')
+                if default_slug:
+                    if await self._launch_direct_door(default_slug):
+                        self._direct_door_launched = True
+                        return
+                    # Unknown/inactive/misconfigured default slug --
+                    # _launch_direct_door already showed the user why;
+                    # fall through to the door MENU below rather than a
+                    # bare BBS main menu, since this install is still a
+                    # dedicated game server even with a broken default.
+                presence.set_page('games:doors')
+                await self.games.show_door_menu()
+                return
+
             # Fast logon check — if the sysop has enabled it, offer the user
             # a chance to skip logon modules and jump straight to the menu.
             # Read directly from .env so changes take effect without restart.
@@ -3697,21 +3910,7 @@ class BBSSession:
             # not shown at all, rather than shown broken.
             if self.term_mode != 'petscii':
                 try:
-                    import os as _os
-                    _fl_enabled = False
-                    _fl_env = _os.path.abspath(_os.path.join(
-                        _os.path.dirname(_os.path.abspath(__file__)),
-                        '..', '..', '.env'))
-                    try:
-                        with open(_fl_env) as _fe:
-                            for _fl_line in _fe:
-                                if _fl_line.startswith('FAST_LOGON_ENABLED='):
-                                    _fl_val = _fl_line.split('=', 1)[1].strip().lower()
-                                    _fl_enabled = _fl_val in ('true', '1', 'yes')
-                                    break
-                    except Exception:
-                        pass
-                    if _fl_enabled:
+                    if self._read_env_file_bool('FAST_LOGON_ENABLED'):
                         _fl_resp = (await self.read_line(
                             '\r\n\x1b[1;33m[F]ast logon — skip intro modules? [y/N]:\x1b[0m ') or '')
                         fast_logon = _fl_resp.strip().lower() == 'y'

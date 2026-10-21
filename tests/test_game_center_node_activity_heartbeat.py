@@ -161,7 +161,8 @@ class GameCenterHeartbeatTests(unittest.TestCase):
         session = _FakeSession(['B'])
         asyncio.run(GameManager(session)._show_category_submenu(
             'synthetic-category', 'Synthetic Category',
-            [{'id': 1, 'name': 'Synthetic Sub Game', 'game_type': 'door_native'}]))
+            [{'id': 1, 'name': 'Synthetic Sub Game', 'game_type': 'door_native',
+              'sort_order': 1}]))
         self.assertIn(('games:doors', 'menu: Synthetic Category'), session.heartbeats)
 
     def test_number_guess_heartbeats_on_entry(self):
