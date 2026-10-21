@@ -114,6 +114,25 @@ class WhoIpVisibilityTests(unittest.TestCase):
         self.assertIn('203.0.113.42', ips,
                       'an admin must still receive real IPs')
 
+    def test_whos_online_show_ip_false_hides_ip_from_admins_too(self):
+        """Real gap reported live: there was no config flag at all for
+        this -- the admin-only gate was a bare hardcoded conditional
+        with no test backing it (confirmed via git blame: IPs used to
+        be shown to EVERY logged-in user before a security pass added
+        this as a plain conditional, not a flag -- exactly the shape of
+        thing that silently regresses on a future refactor). A
+        privacy-conscious sysop can now turn this off entirely, admins
+        included."""
+        self.app.config['WHOS_ONLINE_SHOW_IP'] = False
+        try:
+            rows = self._rows_passed_to_template(self.admin_id)
+        finally:
+            self.app.config['WHOS_ONLINE_SHOW_IP'] = True
+        self.assertIsNotNone(rows)
+        ips = {r['ip'] for r in rows}
+        self.assertNotIn('203.0.113.42', ips,
+                         'WHOS_ONLINE_SHOW_IP=False must hide IPs from admins too')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -333,6 +333,11 @@ class RegisterForm(FlaskForm):
     answer_2   = StringField('Answer 2', validators=[Length(min=0, max=200)])
     question_3 = SelectField('Security Question 3', validators=[])
     answer_3   = StringField('Answer 3', validators=[Length(min=0, max=200)])
+    # Optional invite code -- see REGISTRATION_INVITE_CODE's own comment
+    # in config.py. Left un-required at the class level like the security
+    # questions above; the template only shows the field at all when a
+    # code is actually configured.
+    invite_code = StringField('Invite Code', validators=[Length(min=0, max=80)])
     submit = SubmitField('Register')
 
     def __init__(self, *args, **kwargs):
@@ -381,6 +386,11 @@ class RegisterForm(FlaskForm):
             db.func.lower(User.email) == field.data.lower()
         ).first():
             raise ValidationError('Email already registered. Please use a different one.')
+
+    def validate_invite_code(self, field):
+        required = current_app.config.get('REGISTRATION_INVITE_CODE', '')
+        if required and field.data != required:
+            raise ValidationError('Incorrect invite code.')
 
     def validate_question_2(self, field):
         if field.data and field.data == self.question_1.data:
@@ -560,6 +570,10 @@ def register():
     """Registration page — rate-limited per IP."""
     if current_user.is_authenticated:
         return redirect(url_for('main.index'))
+
+    if not current_app.config.get('REGISTRATION_OPEN', True):
+        flash('New account registration is currently closed.', 'warning')
+        return redirect(url_for('auth.login'))
 
     ip = _client_ip()
     if _ip_is_banned(ip):

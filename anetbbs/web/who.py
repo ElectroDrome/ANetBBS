@@ -6,7 +6,7 @@ Reads UserSession (web + telnet/SSH/rlogin via core.presence) and tags rows by
 service so users can see who's chatting on telnet vs hanging out on the web.
 """
 from datetime import datetime, timedelta
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, current_app
 from flask_login import login_required, current_user
 
 from ..core.presence_labels import classify as _classify_page, friendly_where as _friendly_where
@@ -36,7 +36,17 @@ def index():
     # matching how connection/node info is scoped everywhere else in
     # this codebase (the web NodeSpy panel and in-BBS Node Monitor are
     # both admin/sysop-only).
-    show_ip = getattr(current_user, 'is_admin', False)
+    # WHOS_ONLINE_SHOW_IP (config.py): a real sysop-facing off switch,
+    # default on (unchanged existing admin-only behavior) -- previously
+    # this was a bare hardcoded conditional with no flag and no
+    # regression test, which is exactly the shape of thing that can
+    # silently regress on a future refactor (confirmed via git blame:
+    # IPs were shown to EVERY logged-in user, not just admins, before a
+    # security pass added this check as a plain conditional). A
+    # privacy-conscious sysop (EU/German data-protection constraints)
+    # can now turn this off entirely, admins included.
+    show_ip = (getattr(current_user, 'is_admin', False)
+              and current_app.config.get('WHOS_ONLINE_SHOW_IP', True))
     rich = []
     counts = {}
     for r in rows:

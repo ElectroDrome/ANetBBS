@@ -146,3 +146,22 @@ def close(poll_id):
     db.session.commit()
     flash('Poll closed.', 'success')
     return redirect(url_for('polls.view_poll', poll_id=p.id))
+
+
+@polls_bp.route('/<int:poll_id>/delete', methods=['POST'])
+@login_required
+def delete(poll_id):
+    """Admin-only, unlike close() (admin or creator) -- real gap
+    reported live: no way existed to remove a poll at all (only close
+    it), so a poll created in poor taste stayed visible forever.
+    PollOption.votes and Poll.options both already cascade
+    ('all, delete-orphan', models.py) so this cleanly removes every
+    option and vote with it."""
+    if not current_user.is_admin:
+        abort(403)
+    p = Poll.query.get_or_404(poll_id)
+    question = p.question
+    db.session.delete(p)
+    db.session.commit()
+    flash(f'Poll "{question}" deleted.', 'success')
+    return redirect(url_for('polls.index'))

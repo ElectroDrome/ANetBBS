@@ -60,5 +60,13 @@
             </button>
         </form>
     {% endif %}
+    {% if current_user.is_admin %}
+        <form method="post" action="{{ url_for('polls.delete', poll_id=poll.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Delete this poll permanently, including all votes? This cannot be undone.')">
+                <i class="bi bi-trash"></i> Delete Poll
+            </button>
+        </form>
+    {% endif %}
 </div>
 {% endblock %}

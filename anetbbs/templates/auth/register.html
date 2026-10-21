@@ -80,6 +80,16 @@
                     {% endfor %}
                     {% endif %}
 
+                    {% if config.REGISTRATION_INVITE_CODE %}
+                    <div class="mb-3">
+                        {{ form.invite_code.label(class="form-label") }}
+                        {{ form.invite_code(class="form-control" + (" is-invalid" if form.invite_code.errors else "")) }}
+                        {% if form.invite_code.errors %}
+                            <div class="invalid-feedback">{% for e in form.invite_code.errors %}{{ e }}{% endfor %}</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
                     <div class="d-grid gap-2 mt-3">
                         {{ form.submit(class="btn btn-primary") }}
                     </div>

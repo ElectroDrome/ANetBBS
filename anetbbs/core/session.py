@@ -2435,6 +2435,17 @@ class BBSSession:
     async def handle_registration(self) -> bool:
         """Handle new user registration"""
         import re as _re
+        from ..features.bbs_ui import _app as _bbs_app
+        _cfg = _bbs_app().config
+        if not _cfg.get('REGISTRATION_OPEN', True):
+            await self.write("\r\nNew account registration is currently closed.\r\n")
+            return False
+        _invite_code = _cfg.get('REGISTRATION_INVITE_CODE', '')
+        if _invite_code:
+            entered = await self.read_line("Invite code: ")
+            if (entered or '') != _invite_code:
+                await self.write("\r\nIncorrect invite code.\r\n")
+                return False
         await self.write("\r\n=== New User Registration ===\r\n\r\n")
 
         # Mirror the web form: 3-80 chars, must start with a letter or

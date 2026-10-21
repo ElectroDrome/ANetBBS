@@ -1,4 +1,6 @@
 """Admin CRUD for RSS feeds — sysop adds/edits/removes feeds."""
+from urllib.parse import urlparse
+
 from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash)
 from flask_login import login_required
@@ -50,6 +52,23 @@ def _save(feed):
 
     if not name or not url:
         flash('Name and URL are required.', 'danger')
+        return redirect(request.referrer or url_for('rss_admin.index'))
+
+    # Real gap reported live: a feed URL was only ever validated at the
+    # NEXT background fetch (rss/poller.py's own identical scheme/host
+    # check), with the result stashed in feed.last_error -- no immediate
+    # feedback on save, so a non-http(s) URL (webcal://, feed://, or a
+    # bare domain with no scheme at all -- all common on real "subscribe"
+    # buttons) silently failed with the only sign being a field a sysop
+    # has to go check afterward. Reject it here instead, with the exact
+    # same check poller.py uses, so the sysop finds out immediately.
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        flash('Feed URL must start with http:// or https:// '
+             '(got no scheme, or an unsupported one like webcal://).', 'danger')
+        return redirect(request.referrer or url_for('rss_admin.index'))
+    if not parsed.hostname:
+        flash('Feed URL has no host.', 'danger')
         return redirect(request.referrer or url_for('rss_admin.index'))
 
     if feed is None:

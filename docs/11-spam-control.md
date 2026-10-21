@@ -87,6 +87,29 @@ Non-admin uploads land in `data/file-queue/` with a `FileQueueEntry`
 row. **Admin → File Queue** lets sysop approve (publishes to area)
 or reject (deletes from quarantine).
 
+## 10. Closing registration entirely / invite codes
+
+```
+REGISTRATION_OPEN=true
+REGISTRATION_INVITE_CODE=
+```
+
+`REGISTRATION_OPEN` (default `true`, unchanged existing behavior) gives
+a sysop a hard off switch for new-account creation — set it `false`
+and both the web `/auth/register` form and the terminal
+(telnet/SSH/rlogin/PETSCII) registration flow refuse with a plain
+"registration is currently closed" message, before anything else runs.
+
+`REGISTRATION_INVITE_CODE` (blank by default — no code required) adds
+a shared invite password instead of closing registration outright —
+matches Synchronet's own convention. Set it to any string and every
+new registration (web and terminal) must supply it correctly or be
+refused. Both settings are editable at **Admin → Settings**.
+
+These are independent of NUV (`NUV_ENABLED` above) — NUV gates
+*usage* after an account is created; these two gate *creation* of the
+account itself.
+
 ## Bonus: per-user
 
 Users can self-block at **User menu → Block List**. Blocked users

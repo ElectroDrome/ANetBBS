@@ -290,6 +290,18 @@ Read this whole file before exposing the BBS to the internet.
   `0.0.0.0` if you deliberately want `umrc-client` reachable from
   outside this box (a LAN or the internet); the firewall guidance in
   `docs/PORTS.md` covers opening port 5010 for that case.
+- **Built-in docs browser (`/docs/`) can now be fully gated**, not just
+  publicly readable. `DOCS_PUBLIC_ENABLED` (default `true`, unchanged
+  existing behavior) controls whether `anetbbs/web/docs.py` — which had
+  no access control at all — is reachable by a logged-out visitor; set
+  it `false` to require an admin account for every page under `/docs/`
+  (and `/tutorial`). Editable at **Admin → Settings**.
+- **Who's Online IP display now has a real off switch.** `show_ip` on
+  `/who` was already admin-only (never shown to an ordinary logged-in
+  user), but there was no config flag to disable it even for admins.
+  `WHOS_ONLINE_SHOW_IP` (default `true`, unchanged existing behavior)
+  lets a privacy-conscious sysop turn it off entirely. Editable at
+  **Admin → Settings**.
 
 ## What you MUST do for production
 

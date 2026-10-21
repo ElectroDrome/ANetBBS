@@ -345,7 +345,17 @@ def tour():
 
 @main_bp.route('/tutorial')
 def tutorial():
-    """Bootstrap-carousel slideshow walkthrough for new sysops."""
+    """Bootstrap-carousel slideshow walkthrough for new sysops.
+
+    Registered here (not under docs_bp) but conceptually part of the
+    same docs surface web/docs.py's own module docstring describes --
+    gated by the same DOCS_PUBLIC_ENABLED flag, since it walks through
+    sysop-facing setup detail (the seeded admin password file, etc.)
+    that a sysop turning the flag off is trying to hide.
+    """
+    if not current_app.config.get('DOCS_PUBLIC_ENABLED', True):
+        if not (current_user.is_authenticated and current_user.is_admin):
+            abort(403)
     return render_template('main/tutorial.html')
 
 

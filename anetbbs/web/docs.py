@@ -8,10 +8,23 @@ renders them with the existing markdown filter, and exposes:
   /tutorial             - slideshow walkthrough for new sysops
 """
 from pathlib import Path
-from flask import Blueprint, render_template, abort, url_for, request
+from flask import Blueprint, render_template, abort, url_for, request, current_app
+from flask_login import current_user
 
 
 docs_bp = Blueprint('docs', __name__, url_prefix='/docs')
+
+
+@docs_bp.before_request
+def _gate_docs():
+    """DOCS_PUBLIC_ENABLED (default on, unchanged existing behavior) --
+    real gap reported live: this blueprint had zero access control at
+    all, reachable by anyone with no login. When off, sysop/developer
+    docs (SECURITY.md, CHANGELOG.md, etc.) require an admin account."""
+    if current_app.config.get('DOCS_PUBLIC_ENABLED', True):
+        return
+    if not (current_user.is_authenticated and current_user.is_admin):
+        abort(403)
 
 # CHANGELOG.md grows by a handful of entries every release and never
 # shrinks — rendering the whole file as one markdown pass got slow to

@@ -1,11 +1,33 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.48`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.49`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.49 — Registration controls, docs access toggle, poll cleanup, and RSS/Who's Online settings (October 2026)
+
+- New account registration can now be closed entirely, or gated behind
+  a shared invite code — both configurable at Admin → Settings,
+  defaulting to the existing open-registration behavior. Enforced
+  consistently across the web registration form and the terminal
+  (telnet/SSH/rlogin/PETSCII) registration flow.
+- The built-in docs browser — and the new-sysop tutorial walkthrough,
+  which shares the same toggle — can now be restricted to admin
+  accounts only, instead of being unconditionally public to anyone
+  with no login.
+- Admins can now delete a poll outright, not just close it.
+- Who's Online's IP display to admins now has a real configuration
+  toggle, rather than being permanently on with no way to turn it off.
+- RSS feed URLs are now validated immediately when a feed is saved,
+  with a clear error message for a missing or unsupported URL scheme,
+  instead of only surfacing as a silent failure at the next poll.
+
+See [`11-spam-control.md`](11-spam-control.md),
+[`SECURITY.md`](SECURITY.md), and [`16-rss-reader.md`](16-rss-reader.md)
+for details.
 
 ## v1.1.48 — Native MUD engine, door-games admin fixes, game-server mode, MUD telnet protocols, and DoorParty federation (October 2026)
 

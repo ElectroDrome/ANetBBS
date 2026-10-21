@@ -57,7 +57,7 @@ To refresh manually, hit the circular-arrow icon next to a feed in
 |----------------|-------|
 | **Name**       | Display name shown to users (e.g., `X-News`) |
 | **Category**   | Free text — `news`, `tech`, `scene`, `general`. Feeds are grouped by this on the web feed picker. |
-| **Feed URL**   | RSS 2.0 / Atom / RSS 1.0 — feedparser handles all of them. |
+| **Feed URL**   | RSS 2.0 / Atom / RSS 1.0 — feedparser handles all of them. Must be a plain `http://` or `https://` URL — validated immediately on save, with a clear error if it's missing a scheme entirely (a bare domain like `example.com/feed.xml`) or uses an unsupported one (`webcal://`, `feed://`). Previously this only surfaced as a silent fetch failure (a red badge, `feed.last_error`) at the next poll tick. |
 | **Site URL**   | Optional human-facing homepage of the feed source. |
 | **Description**| One-liner shown on the feed picker. |
 | **Sort order** | Lower = appears first. |

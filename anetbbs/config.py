@@ -304,6 +304,33 @@ class Config:
     # so setting it in .env silently did nothing.
     FILE_MOD_QUEUE_ENABLED = os.environ.get(
         'FILE_MOD_QUEUE_ENABLED', 'false').lower() == 'true'
+    # Public-facing /docs/ browser (anetbbs/web/docs.py) -- on by default
+    # (unchanged existing behavior). Real gap reported live: the docs/
+    # tree (sysop/developer-facing manuals, SECURITY.md, CHANGELOG.md)
+    # had zero access control at all -- reachable by anyone, no login.
+    # When false, /docs/ requires an admin account.
+    DOCS_PUBLIC_ENABLED = os.environ.get(
+        'DOCS_PUBLIC_ENABLED', 'true').lower() == 'true'
+    # New-account registration gate. REGISTRATION_OPEN off refuses new
+    # signups outright (existing accounts are unaffected).
+    # REGISTRATION_INVITE_CODE, if set, must be supplied at signup --
+    # same shape as Synchronet's own pre-shared-registration-password
+    # convention. Blank code = no code required (default, unchanged
+    # existing behavior).
+    REGISTRATION_OPEN = os.environ.get(
+        'REGISTRATION_OPEN', 'true').lower() == 'true'
+    REGISTRATION_INVITE_CODE = os.environ.get('REGISTRATION_INVITE_CODE', '')
+    # Who's Online IP address display (anetbbs/web/who.py) -- previously
+    # a bare hardcoded "admins only" conditional with no config flag and
+    # no regression test backing it (confirmed via git blame: it used to
+    # show IPs to every logged-in user before a security pass added the
+    # admin-only gate as a plain conditional, not a flag -- exactly the
+    # shape of thing that silently regresses on a future refactor). Off
+    # hides IPs from everyone, admins included, for a sysop under EU/
+    # German privacy-law constraints who doesn't want IPs surfaced in
+    # the UI at all. On (default) preserves current admin-only behavior.
+    WHOS_ONLINE_SHOW_IP = os.environ.get(
+        'WHOS_ONLINE_SHOW_IP', 'true').lower() == 'true'
     # Number of telnet/SSH/rlogin "nodes" (1-100). Each concurrent
     # terminal session occupies one node. Used by the multinode chat,
     # who's-online slot tracking, and admin capacity displays.
