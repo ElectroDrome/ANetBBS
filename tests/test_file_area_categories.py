@@ -266,6 +266,69 @@ class FileAreaCategoryAdminTests(unittest.TestCase):
             self.assertNotEqual(one.sort_order, two.sort_order)
             self.assertEqual(unrelated.sort_order, 777)
 
+    def test_renumber_areas_in_a_submenu_category_assigns_clean_sequence(self):
+        """Real bug found alongside the identical one in
+        games_admin.py's renumber_games(): renumber_file_areas() used
+        to assign the GAPPED 10/20/30/... sequence unconditionally,
+        even for areas inside an as_submenu=True category --
+        contradicting resolve_file_area_sort_order_collisions()'s own
+        every-boot policy of a clean 1/2/3/... run for exactly those
+        areas."""
+        from anetbbs.models import db, FileArea, FileAreaCategory
+        with self.app.app_context():
+            db.session.add(FileAreaCategory(name='Renumber Submenu Cat',
+                                            slug='fa-renumber-submenu-cat', as_submenu=True))
+            db.session.add_all([
+                FileArea(tag='FA.SUBONE', name='Sub One', category='fa-renumber-submenu-cat',
+                        is_active=True, sort_order=50),
+                FileArea(tag='FA.SUBTWO', name='Sub Two', category='fa-renumber-submenu-cat',
+                        is_active=True, sort_order=20),
+            ])
+            db.session.commit()
+
+        client = self._client()
+        resp = client.post('/admin/file-areas/renumber',
+                           data={'category': 'fa-renumber-submenu-cat'}, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+
+        with self.app.app_context():
+            two = FileArea.query.filter_by(tag='FA.SUBTWO').first()
+            one = FileArea.query.filter_by(tag='FA.SUBONE').first()
+            self.assertEqual(two.sort_order, 1,
+                            msg='lower pre-existing sort_order (20) must come first')
+            self.assertEqual(one.sort_order, 2,
+                            msg='submenu areas must get a clean 1/2/3/... run, '
+                                'not the gapped 10/20/30/... scheme')
+
+    def test_reorder_areas_in_a_submenu_category_writes_clean_sequence(self):
+        """Same bug, for the drag-and-drop endpoint instead of the
+        one-click renumber button."""
+        from anetbbs.models import db, FileArea, FileAreaCategory
+        with self.app.app_context():
+            db.session.add(FileAreaCategory(name='Reorder Submenu Cat',
+                                            slug='fa-reorder-submenu-cat', as_submenu=True))
+            a = FileArea(tag='FA.DRAGA', name='Drag A', category='fa-reorder-submenu-cat',
+                        is_active=True, sort_order=1)
+            b = FileArea(tag='FA.DRAGB', name='Drag B', category='fa-reorder-submenu-cat',
+                        is_active=True, sort_order=2)
+            db.session.add_all([a, b])
+            db.session.commit()
+            a_id, b_id = a.id, b.id
+
+        client = self._client()
+        resp = client.post('/admin/file-areas/reorder', json={'order': [b_id, a_id]})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()['ok'])
+
+        with self.app.app_context():
+            a2 = FileArea.query.get(a_id)
+            b2 = FileArea.query.get(b_id)
+            self.assertEqual(b2.sort_order, 1,
+                            msg='B was posted first and must get the clean value 1')
+            self.assertEqual(a2.sort_order, 2,
+                            msg='submenu areas must get a clean 1/2/3/... run, '
+                                'not the gapped 10/20/30/... scheme')
+
 
 class ResolveFileAreaSortOrderCollisionsTests(unittest.TestCase):
     """Boot-time self-heal -- mirrors

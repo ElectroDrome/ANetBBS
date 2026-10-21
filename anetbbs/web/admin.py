@@ -2042,13 +2042,23 @@ def renumber_file_area_categories():
 def reorder_file_areas():
     """Bulk reorder, posted by the admin file-areas list page's
     drag-and-drop UI -- same shape as games_admin.py's reorder_games():
-    a JSON body `{"order": [area_id, ...]}` in the new desired order,
+    a JSON body `{"order": [area_id, ...]}` in the new desired order.
+    Only touches areas actually present in `order`.
+
+    For a non-submenu category's areas (or an area with no category),
     writes back gapped sort_order values (10, 20, 30, ...) so a sysop
     can insert a new area later between two existing ones without
-    renumbering anything else. Only touches areas actually present in
-    `order`."""
+    renumbering anything else.
+
+    Real bug found alongside the identical one in games_admin.py's
+    reorder_games()/renumber_games(): areas inside an as_submenu=True
+    category used to get this same gapped treatment unconditionally,
+    contradicting resolve_file_area_sort_order_collisions()'s
+    (features/file_areas.py) every-boot policy of a clean 1/2/3/... run
+    for exactly those areas. Grouped by category so a mixed drag still
+    applies the right scheme to each area."""
     from flask import jsonify
-    from ..models import FileArea
+    from ..models import FileArea, FileAreaCategory
     payload = request.get_json(silent=True) or {}
     try:
         order = [int(aid) for aid in (payload.get('order') or [])]
@@ -2057,10 +2067,20 @@ def reorder_file_areas():
     if not order:
         return jsonify({'ok': False, 'error': 'empty order'}), 400
     areas_by_id = {fa.id: fa for fa in FileArea.query.filter(FileArea.id.in_(order)).all()}
-    for i, aid in enumerate(order):
+    submenu_cat_slugs = {c.slug for c in FileAreaCategory.query.filter_by(as_submenu=True).all()}
+    groups = {}
+    for aid in order:
         fa = areas_by_id.get(aid)
-        if fa is not None:
-            fa.sort_order = (i + 1) * 10
+        if fa is None:
+            continue
+        groups.setdefault(fa.category or 'other', []).append(fa)
+    for cat_slug, cat_areas in groups.items():
+        if cat_slug in submenu_cat_slugs:
+            for i, fa in enumerate(cat_areas, start=1):
+                fa.sort_order = i
+        else:
+            for i, fa in enumerate(cat_areas, start=1):
+                fa.sort_order = i * 10
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -2074,19 +2094,42 @@ def renumber_file_areas():
     current effective order -- mirrors games_admin.py's
     renumber_games() exactly, including the same per-category scoping
     so fixing one broken/colliding category doesn't reshuffle every
-    other category's own numbers."""
-    from ..models import FileArea
+    other category's own numbers, and the same submenu-vs-inline split:
+    a submenu category's areas get a clean 1/2/3/... run (matching
+    resolve_file_area_sort_order_collisions()'s every-boot policy,
+    features/file_areas.py); a non-submenu category's areas (or areas
+    with no category) keep the gapped 10/20/30/... run. Found and fixed
+    alongside the identical bug in games_admin.py's renumber_games() --
+    this used to assign the gapped sequence unconditionally, so a sysop
+    editing a submenu area's number to 1 and clicking Renumber saw it
+    jump straight back to 10."""
+    from ..models import FileArea, FileAreaCategory
     category = (request.form.get('category') or '').strip()
+    submenu_cat_slugs = {c.slug for c in FileAreaCategory.query.filter_by(as_submenu=True).all()}
     q = FileArea.query
     if category:
         q = q.filter_by(category=category)
     areas = q.order_by(FileArea.sort_order, FileArea.tag).all()
-    for i, fa in enumerate(areas):
-        fa.sort_order = (i + 1) * 10
+
+    if category:
+        groups = {category: areas}
+    else:
+        groups = {}
+        for fa in areas:
+            groups.setdefault(fa.category or 'other', []).append(fa)
+
+    for cat_slug, cat_areas in groups.items():
+        if cat_slug in submenu_cat_slugs:
+            for i, fa in enumerate(cat_areas, start=1):
+                fa.sort_order = i
+        else:
+            for i, fa in enumerate(cat_areas, start=1):
+                fa.sort_order = i * 10
     db.session.commit()
     scope = f'"{category}"' if category else 'all'
-    flash(f'Renumbered {len(areas)} area(s) in {scope} to a clean 10/20/30/... sequence.',
-         'success')
+    scheme = ('a clean 1/2/3/...' if category and category in submenu_cat_slugs
+              else 'a clean 10/20/30/...')
+    flash(f'Renumbered {len(areas)} area(s) in {scope} to {scheme} sequence.', 'success')
     return redirect(url_for('admin.file_areas_admin'))
 
 

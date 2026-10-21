@@ -1,11 +1,23 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.49`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.50`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.50 — Submenu renumbering fix for Door Games and File Areas (October 2026)
+
+- Fixed a bug in the admin "Renumber" button and drag-and-drop
+  reordering for both Door Games and File Areas: games/areas inside a
+  submenu category were being assigned a gapped `10/20/30/...` number
+  sequence instead of a clean `1/2/3/...` one, contradicting the
+  automatic every-boot numbering behavior those submenus already have.
+  A sysop editing a submenu entry's number to `1` and clicking Renumber
+  would see it immediately revert to `10`. Both admin tools now match
+  the clean-numbering behavior submenu categories are supposed to have;
+  top-level (non-submenu) numbering is unaffected.
 
 ## v1.1.49 — Registration controls, docs access toggle, poll cleanup, and RSS/Who's Online settings (October 2026)
 

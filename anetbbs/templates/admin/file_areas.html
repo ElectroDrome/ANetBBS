@@ -188,7 +188,7 @@
             </span>
             <form method="post" action="{{ url_for('admin.renumber_file_areas') }}"
                   onclick="event.stopPropagation();"
-                  onsubmit="return confirm('Renumber every area in {{ cat_label }} to a clean 10/20/30/... sequence? Only this category is affected.');">
+                  onsubmit="return confirm('Renumber every area in {{ cat_label }} to a clean {{ "1/2/3/..." if is_submenu else "10/20/30/..." }} sequence? Only this category is affected.');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="category" value="{{ slug }}">
                 <button type="submit" class="btn btn-sm btn-outline-primary" title="Renumber only this category's areas">

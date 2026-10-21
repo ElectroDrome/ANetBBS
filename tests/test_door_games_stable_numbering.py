@@ -501,6 +501,75 @@ class GamesAdminReorderRenumberTests(unittest.TestCase):
                             msg="a game in a DIFFERENT category must be "
                                 "completely untouched by a scoped renumber")
 
+    def test_renumber_games_in_a_submenu_category_assigns_clean_sequence(self):
+        """Real bug reported live: renumber_games() used to assign the
+        GAPPED 10/20/30/... sequence unconditionally, even for games
+        inside an as_submenu=True category -- contradicting
+        resolve_sort_order_collisions()'s own every-boot policy of a
+        clean 1/2/3/... run for exactly those games (nothing hardcodes
+        a submenu game's number into ANSI art). A sysop editing a
+        submenu game's number to 1 and clicking Renumber saw it jump
+        straight back to 10."""
+        from anetbbs.models import db, Game, GameCategory
+        with self.app.app_context():
+            db.session.add(GameCategory(name='Renumber Submenu Cat',
+                                        slug='renumber-submenu-cat', as_submenu=True))
+            db.session.add_all([
+                Game(name='Sub One', slug='renumber-submenu-game-one',
+                    category='renumber-submenu-cat', game_type='door_native',
+                    is_active=True, sort_order=50),
+                Game(name='Sub Two', slug='renumber-submenu-game-two',
+                    category='renumber-submenu-cat', game_type='door_native',
+                    is_active=True, sort_order=20),
+            ])
+            db.session.commit()
+
+        client = self._client()
+        resp = client.post('/admin/games/renumber',
+                           data={'category': 'renumber-submenu-cat'},
+                           follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+
+        with self.app.app_context():
+            two = Game.query.filter_by(slug='renumber-submenu-game-two').first()
+            one = Game.query.filter_by(slug='renumber-submenu-game-one').first()
+            self.assertEqual(two.sort_order, 1,
+                            msg='lower pre-existing sort_order (20) must come first')
+            self.assertEqual(one.sort_order, 2,
+                            msg='submenu games must get a clean 1/2/3/... run, '
+                                'not the gapped 10/20/30/... scheme')
+
+    def test_reorder_games_in_a_submenu_category_writes_clean_sequence(self):
+        """Same bug, for the drag-and-drop endpoint instead of the
+        one-click renumber button."""
+        from anetbbs.models import db, Game, GameCategory
+        with self.app.app_context():
+            db.session.add(GameCategory(name='Reorder Submenu Cat',
+                                        slug='reorder-submenu-cat', as_submenu=True))
+            a = Game(name='Drag A', slug='reorder-submenu-game-a',
+                    category='reorder-submenu-cat', game_type='door_native',
+                    is_active=True, sort_order=1)
+            b = Game(name='Drag B', slug='reorder-submenu-game-b',
+                    category='reorder-submenu-cat', game_type='door_native',
+                    is_active=True, sort_order=2)
+            db.session.add_all([a, b])
+            db.session.commit()
+            a_id, b_id = a.id, b.id
+
+        client = self._client()
+        resp = client.post('/admin/games/reorder', json={'order': [b_id, a_id]})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()['ok'])
+
+        with self.app.app_context():
+            a2 = Game.query.get(a_id)
+            b2 = Game.query.get(b_id)
+            self.assertEqual(b2.sort_order, 1,
+                            msg='B was posted first and must get the clean value 1')
+            self.assertEqual(a2.sort_order, 2,
+                            msg='submenu games must get a clean 1/2/3/... run, '
+                                'not the gapped 10/20/30/... scheme')
+
     def test_renumber_categories_endpoint(self):
         """as_submenu=True AND at least one visible active game required
         here -- only a submenu category that actually shows a numbered

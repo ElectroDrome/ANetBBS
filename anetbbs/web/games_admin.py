@@ -246,13 +246,25 @@ def list_games():
 def reorder_games():
     """Bulk reorder, posted by the admin list page's drag-and-drop UI --
     a JSON body `{"order": [game_id, game_id, ...]}` in the new desired
-    order. Writes back GAPPED sort_order values (10, 20, 30, ...), not
+    order. Only touches games actually present in `order`; any other
+    game's sort_order is left alone (a drag-and-drop reorder within one
+    category shouldn't renumber a different category's games).
+
+    For a non-submenu category's games (or a game with no category),
+    writes back GAPPED sort_order values (10, 20, 30, ...), not
     consecutive ones, specifically so a sysop can insert a new door
     later (sort_order=15) between two existing ones without renumbering
     anything else -- the exact same prevention this whole fix is about.
-    Only touches games actually present in `order`; any other game's
-    sort_order is left alone (a drag-and-drop reorder within one
-    category shouldn't renumber a different category's games)."""
+
+    Real bug found alongside the identical one in renumber_games():
+    games inside an as_submenu=True category's own submenu used to get
+    this same gapped treatment unconditionally, contradicting
+    resolve_sort_order_collisions()'s (features/games.py) every-boot
+    policy of a clean 1/2/3/... run for exactly those games -- nothing
+    hardcodes a submenu game's number into ANSI art the way a top-level
+    one can be, so there's no reason to preserve gaps there. Grouped by
+    category (not a single flat pass) so a mixed drag -- unlikely, but
+    not assumed away -- still applies the right scheme to each game."""
     payload = request.get_json(silent=True) or {}
     try:
         order = [int(gid) for gid in (payload.get('order') or [])]
@@ -261,10 +273,20 @@ def reorder_games():
     if not order:
         return jsonify({'ok': False, 'error': 'empty order'}), 400
     games_by_id = {g.id: g for g in Game.query.filter(Game.id.in_(order)).all()}
-    for i, gid in enumerate(order):
+    submenu_cat_slugs = {c.slug for c in GameCategory.query.filter_by(as_submenu=True).all()}
+    groups = {}
+    for gid in order:
         g = games_by_id.get(gid)
-        if g is not None:
-            g.sort_order = (i + 1) * 10
+        if g is None:
+            continue
+        groups.setdefault(g.category or 'other', []).append(g)
+    for cat_slug, cat_games in groups.items():
+        if cat_slug in submenu_cat_slugs:
+            for i, g in enumerate(cat_games, start=1):
+                g.sort_order = i
+        else:
+            for i, g in enumerate(cat_games, start=1):
+                g.sort_order = i * 10
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -333,21 +355,44 @@ def renumber_games():
     just that one category shouldn't have every OTHER category's
     carefully-set custom numbers reshuffled along with it), in their
     current effective order (Game.sort_order, Game.name -- the same
-    ordering every other query in this codebase already uses). For when
-    sort_order values have drifted or collided and a sysop wants a
-    fresh gapped sequence (10, 20, 30, ...) rather than managing gaps
-    by hand."""
+    ordering every other query in this codebase already uses).
+
+    Real bug reported live: this used to assign a GAPPED 10/20/30/...
+    sequence unconditionally, even for games inside an as_submenu=True
+    category -- directly contradicting resolve_sort_order_collisions()'s
+    own every-boot policy (features/games.py), which gives submenu
+    games a clean 1/2/3/... run since, unlike top-level/inline games,
+    nothing hardcodes a submenu game's number into ANSI art. A sysop
+    editing a submenu game's number to 1 and clicking this button saw
+    it immediately jump back to 10 -- this button must match the same
+    split resolve_sort_order_collisions() already enforces at boot,
+    not reintroduce the gap the next time a sysop clicks it."""
     category = (request.form.get('category') or '').strip()
+    submenu_cat_slugs = {c.slug for c in GameCategory.query.filter_by(as_submenu=True).all()}
     q = Game.query
     if category:
         q = q.filter_by(category=category)
     games = q.order_by(Game.sort_order, Game.name).all()
-    for i, g in enumerate(games):
-        g.sort_order = (i + 1) * 10
+
+    if category:
+        groups = {category: games}
+    else:
+        groups = {}
+        for g in games:
+            groups.setdefault(g.category or 'other', []).append(g)
+
+    for cat_slug, cat_games in groups.items():
+        if cat_slug in submenu_cat_slugs:
+            for i, g in enumerate(cat_games, start=1):
+                g.sort_order = i
+        else:
+            for i, g in enumerate(cat_games, start=1):
+                g.sort_order = i * 10
     db.session.commit()
     scope = f'"{category}"' if category else 'all'
-    flash(f'Renumbered {len(games)} game(s) in {scope} to a clean 10/20/30/... sequence.',
-         'success')
+    scheme = ('a clean 1/2/3/...' if category and category in submenu_cat_slugs
+              else 'a clean 10/20/30/...')
+    flash(f'Renumbered {len(games)} game(s) in {scope} to {scheme} sequence.', 'success')
     return redirect(url_for('games_admin.list_games'))
 
 

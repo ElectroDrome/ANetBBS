@@ -12,7 +12,7 @@
             <i class="bi bi-tags"></i> Categories
         </a>
         <form method="post" action="{{ url_for('games_admin.renumber_games') }}" style="display:inline;"
-              onsubmit="return confirm('Renumber every game to a clean 10/20/30/... sequence? This changes the number players type to pick a door -- update any hand-made ANSI door-menu art to match afterwards.');">
+              onsubmit="return confirm('Renumber every game? Submenu categories\' games get a clean 1/2/3/... sequence; top-level/inline games get a gapped 10/20/30/... sequence. This changes the number players type to pick a door -- update any hand-made ANSI door-menu art to match afterwards.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-sm btn-primary" title="Auto-renumber all games">
                 <i class="bi bi-sort-numeric-down"></i> Renumber
@@ -30,7 +30,8 @@
     pick that game -- it's <code>Sort Order</code>, not a recomputed position, so it only changes
     when you change it (directly, by dragging, or via Renumber). Safe to hardcode into custom ANSI
     door-menu art. Drag the <i class="bi bi-grip-vertical"></i> handle to reorder within a category;
-    dropping writes new gapped Sort Order values automatically.
+    dropping writes new Sort Order values automatically -- gapped (10/20/30/...) for a top-level or
+    inline category, clean (1/2/3/...) for a <span class="badge" style="background:#003366;color:#88ccff;">submenu</span> category.
 </p>
 
 {% for slug in cat_order %}
@@ -50,7 +51,7 @@
         </span>
         <form method="post" action="{{ url_for('games_admin.renumber_games') }}"
               onclick="event.stopPropagation();"
-              onsubmit="return confirm('Renumber every game in {{ cat_label }} to a clean 10/20/30/... sequence? Only this category is affected. This changes the number players type to pick a door -- update any hand-made ANSI door-menu art to match afterwards.');">
+              onsubmit="return confirm('Renumber every game in {{ cat_label }} to a clean {{ "1/2/3/..." if is_submenu else "10/20/30/..." }} sequence? Only this category is affected. This changes the number players type to pick a door -- update any hand-made ANSI door-menu art to match afterwards.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="category" value="{{ slug }}">
             <button type="submit" class="btn btn-sm btn-outline-primary" title="Renumber only this category's games">
