@@ -76,6 +76,38 @@ class RemoteAddressVerificationTests(unittest.TestCase):
         client = self._client('1:200/100')
         client._verify_remote_address('   ')
 
+    def test_explicit_point_zero_matches_omitted_point(self):
+        """Real live bug (2026-10-22): a real fsxNet hub announced
+        itself as '21:3/100.0@fsxnet' against a configured hub_address
+        of '21:3/100' (no point) -- FTS-5001 says these are the SAME
+        address (point 0 is the default/implicit point), but the old
+        plain string comparison treated them as unrelated, logging a
+        false 'possible misconfiguration' warning for a perfectly
+        correctly configured link."""
+        client = self._client('21:3/100')
+        with self.assertLogs('anetbbs.echomail.binkp', level='WARNING') as cm:
+            logging.getLogger('anetbbs.echomail.binkp').warning('sentinel')
+            client._verify_remote_address('21:3/100.0@fsxnet')
+        self.assertEqual(len(cm.output), 1, 'explicit .0 must match an omitted point')
+
+    def test_omitted_point_matches_explicit_point_zero_configured(self):
+        """The reverse direction: hub_address itself stored WITH an
+        explicit '.0' must still match a peer announcing without one."""
+        client = self._client('21:3/100.0')
+        with self.assertLogs('anetbbs.echomail.binkp', level='WARNING') as cm:
+            logging.getLogger('anetbbs.echomail.binkp').warning('sentinel')
+            client._verify_remote_address('21:3/100@fsxnet')
+        self.assertEqual(len(cm.output), 1)
+
+    def test_genuinely_different_node_still_warns(self):
+        """Point normalization must not become a blanket pass -- a
+        truly different node number is still a real mismatch."""
+        client = self._client('21:3/100')
+        with self.assertLogs('anetbbs.echomail.binkp', level='WARNING') as cm:
+            client._verify_remote_address('21:3/999.0@fsxnet')
+        joined = '\n'.join(cm.output)
+        self.assertIn('21:3/999.0@fsxnet', joined)
+
 
 if __name__ == '__main__':
     unittest.main()

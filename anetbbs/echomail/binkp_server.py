@@ -680,7 +680,7 @@ async def _handle_connection(reader, writer, our_address: str, system_name: str)
     # 3. Look up the caller — may be an upstream hub (EchomailNetwork) or a
     #    downstream node that registered with us as hub (BinkPNode).
     from anetbbs.models import db, EchomailNetwork, BinkPNode
-    from .routing import self_hub_binkp_network
+    from .routing import self_hub_binkp_network, parse_address, format_address
 
     app = _new_app()
     db.init_app(app)
@@ -688,6 +688,19 @@ async def _handle_connection(reader, writer, our_address: str, system_name: str)
     # Build the set of address candidates to check. Each AKA the peer
     # sent — and its bare 5D form without the @domain suffix — is a valid
     # match against hub_address (upstream) or ftn_address (downstream).
+    #
+    # Also add a POINT-NORMALIZED form of each bare address. FTS-5001
+    # point 0 and an omitted point are the same address -- this
+    # project's own format_address() already encodes that convention
+    # (point=0 is never rendered), but a real hub can announce its AKA
+    # WITH an explicit ".0" (confirmed live, 2026-10-22: a real fsxNet
+    # hub calling in as "21:3/100.0@fsxnet" against a configured
+    # hub_address stored as "21:3/100") while another might be stored
+    # or announced the other way around. Without this, a raw string
+    # match fails both directions and a legitimate, already-configured
+    # hub gets treated as a total stranger -- its echomail silently
+    # dropped (3b below only accepts netmail from an unrecognized
+    # caller), even though the password would have verified it fine.
     candidates = []
     for a in (remote_akas or [remote_addr]) if remote_addr else []:
         if not a:
@@ -697,6 +710,15 @@ async def _handle_connection(reader, writer, our_address: str, system_name: str)
         bare = a.split('@', 1)[0]
         if bare and bare not in candidates:
             candidates.append(bare)
+        parsed = parse_address(bare)
+        if parsed:
+            zone, net_num, node_num, point = parsed
+            normalized = format_address(zone, net_num, node_num, point)
+            if normalized not in candidates:
+                candidates.append(normalized)
+            explicit = f'{zone}:{net_num}/{node_num}.{point}'
+            if explicit not in candidates:
+                candidates.append(explicit)
 
     net_id = None
     net_name = None

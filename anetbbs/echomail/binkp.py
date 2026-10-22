@@ -1643,12 +1643,35 @@ class BinkPClient:
         """
         if not self.hub_address:
             return
+        from .routing import parse_address, format_address
+
+        def _point_variants(bare):
+            """Both the point-omitted and explicit-'.0' forms of an
+            address are the same address per FTS-5001 -- a real hub can
+            announce (or be configured) either way. Without this, a
+            legitimate hub whose claimed AKA differs from our stored
+            hub_address only by an explicit vs. omitted point 0 (real
+            live case, 2026-10-22: '21:3/100.0' vs '21:3/100') fails
+            this string-only comparison and logs a false-positive
+            'possible misconfiguration' warning for a perfectly correct
+            link."""
+            parsed = parse_address(bare)
+            if not parsed:
+                return ()
+            zone, net_num, node_num, point = parsed
+            return (format_address(zone, net_num, node_num, point),
+                   f'{zone}:{net_num}/{node_num}.{point}')
+
         expected = self.hub_address.strip().lower()
         expected_bare = expected.split('@', 1)[0]
+        expected_variants = {expected, expected_bare}
+        expected_variants.update(v.lower() for v in _point_variants(expected_bare))
         remote_tokens = [t.strip().lower() for t in remote_adr_text.split() if t.strip()]
         for tok in remote_tokens:
             bare = tok.split('@', 1)[0]
-            if tok in (expected, expected_bare) or bare in (expected, expected_bare):
+            tok_variants = {tok, bare}
+            tok_variants.update(v.lower() for v in _point_variants(bare))
+            if tok_variants & expected_variants:
                 return
         if remote_tokens:
             logger.warning(

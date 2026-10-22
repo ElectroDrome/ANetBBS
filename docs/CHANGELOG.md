@@ -1,11 +1,26 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.52`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.53`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.53 — BinkP hub-recognition fix for FTN point notation (October 2026)
+
+- Fixed a bug in the inbound BinkP listener's peer-recognition logic:
+  an incoming caller's announced address was matched against a
+  network's configured hub address using a plain string comparison,
+  with no awareness that FTN point notation allows the same address to
+  be written either with an explicit point (e.g. `.0`) or with the
+  point omitted. A hub announcing one form against a hub address
+  configured in the other form was treated as a completely
+  unrecognized caller — its echomail silently dropped on every
+  connection attempt, even though the password would have verified
+  correctly. Both forms are now recognized as equivalent in both
+  directions. A related, non-blocking false-positive warning in the
+  outbound client's own address cross-check is fixed the same way.
 
 ## v1.1.52 — fsxNet Last Caller timestamp fix (October 2026)
 
