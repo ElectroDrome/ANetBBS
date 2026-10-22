@@ -1,11 +1,25 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.50`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.51`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.51 — fsxNet IBLC wire-format and sync fixes (October 2026)
+
+- Fixed inbound fsxNet Last Caller (IBLC) parsing to recognize a second
+  real wire variant seen in production — a pipe-delimited header/data
+  format framed with bare `BEGIN`/`END` markers — alongside the
+  original fixed-field format. Posts in this variant were previously
+  classified as unrecognized and never imported.
+- Fixed the inbound sync job to permanently record a message as
+  unrecognized once classified that way, instead of re-scanning the
+  same backlog of genuinely unrelated traffic on every run. A message
+  matching a known IBOL/IBLC shape whose feature toggle is simply
+  turned off is deliberately excluded from this — re-enabling the
+  feature later still picks it up normally.
 
 ## v1.1.50 — Submenu renumbering fix for Door Games and File Areas (October 2026)
 

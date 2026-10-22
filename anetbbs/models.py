@@ -3529,6 +3529,39 @@ class FsxnetLastCaller(db.Model):
         return f'<FsxnetLastCaller {self.id} {self.alias}@{self.bbs_name}>'
 
 
+class FsxnetSyncSkip(db.Model):
+    """Permanent record of an inbound FSX_DAT message whose to/from/
+    subject matched NEITHER IBOL's nor IBLC's known shape at all (see
+    fsxnet_sync.py's sync_fsxnet_inbound) -- real other traffic sharing
+    the same echo area (fsxNet's own infopack describes FSX_DAT as used
+    by "software such as InterBBS Oneliners, Last Caller Mods etc",
+    i.e. more than just these two). Without this, such a message has no
+    remote_msg_id anywhere else to dedup against (it's neither a
+    FsxnetOneliner nor a FsxnetLastCaller row), so every 15-minute sync
+    tick would re-scan and re-skip it forever -- confirmed live
+    (2026-10-22): a 214-message backlog reported as "skipped...
+    unrecognized" by the SAME unchanging count on every single tick.
+
+    Deliberately NOT used for a message that matched a KNOWN shape but
+    failed to parse (e.g. a real IBLC post using a wire variant our
+    parser doesn't handle yet) -- that failure class is exactly what
+    just happened live (a second real fsxNet peer's last-caller format
+    turned out to need a parser update, not a permanent skip), and a
+    body-parse improvement should pick up old backlog automatically on
+    its very next tick. Also not used when a message matches a known
+    shape but that feature is simply disabled (FSXNET_IBOL_ENABLED/
+    FSXNET_IBLC_ENABLED) -- re-enabling the feature must let it import,
+    not find it silently pre-skipped forever."""
+    __tablename__ = 'fsxnet_sync_skips'
+
+    id = db.Column(db.Integer, primary_key=True)
+    remote_msg_id = db.Column(db.String(100), nullable=False, index=True, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f'<FsxnetSyncSkip {self.id} {self.remote_msg_id}>'
+
+
 # ---------------------------------------------------------------------------
 # Logon / Logoff Modules
 # ---------------------------------------------------------------------------

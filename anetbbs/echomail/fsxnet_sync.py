@@ -234,22 +234,86 @@ def _parse_oneliner(body):
     return author, source_bbs, lines
 
 
+_LASTCALL_BEGIN_MARKERS = (IBLC_BEGIN, 'BEGIN')
+
+
 def _parse_lastcall(body):
-    """Parse a real IBLC message body. Returns a dict of the 7
-    rot47-decoded fields, or None if the >>> BEGIN marker (and 7
-    following lines) isn't there."""
+    """Parse a real IBLC message body. Returns a dict of 7 target
+    fields, or None if the body matches neither of the two real wire
+    variants seen live on fsxNet.
+
+    Variant 1 (the reference iblc.js): framed by '>>> BEGIN'/'>>> END',
+    exactly 7 rot47-encoded fields, one per line, in fixed order.
+
+    Variant 2 (confirmed live 2026-10-22, fsxNet peer 21:2/139,
+    futureland.today): framed by bare 'BEGIN'/'END' (no '>>> ' prefix),
+    with exactly 2 rot47-encoded lines -- a pipe-delimited HEADER row
+    naming its own fields, then one pipe-delimited DATA row. Real
+    observed header: "epoch|alias|city|country|client|door|bbs|url|
+    system". Self-describing rather than iblc.js's fixed-position
+    scheme -- a different real implementation of the same idea, not a
+    bug on the sender's end, so it's handled rather than rejected."""
     lines = (body or '').split('\n')
-    try:
-        idx = lines.index(IBLC_BEGIN)
-    except ValueError:
+    begin_idx = None
+    for i, ln in enumerate(lines):
+        if ln.strip() in _LASTCALL_BEGIN_MARKERS:
+            begin_idx = i
+            break
+    if begin_idx is None:
         return None
-    if idx + 7 >= len(lines):
+
+    if begin_idx + 7 < len(lines):
+        fields = [rot47(lines[begin_idx + 1 + i]) for i in range(7)]
+        return {
+            'alias': fields[0], 'bbs_name': fields[1],
+            'remote_date_str': fields[2], 'remote_time_str': fields[3],
+            'location': fields[4], 'os': fields[5], 'address': fields[6],
+        }
+
+    return _parse_lastcall_pipe_variant(lines, begin_idx)
+
+
+def _parse_lastcall_pipe_variant(lines, begin_idx):
+    """Variant 2's header/data pair -- see _parse_lastcall()'s own
+    docstring. Requires both an 'alias' and a 'bbs' column to be
+    present and non-empty (same "don't guess, don't half-import"
+    discipline as _parse_oneliner's Author/Source requirement); any
+    other missing column is just stored as an empty string rather than
+    rejecting the whole post, since those are display-only fields."""
+    if begin_idx + 2 >= len(lines):
         return None
-    fields = [rot47(lines[idx + 1 + i]) for i in range(7)]
+    header = [h.strip().lower() for h in rot47(lines[begin_idx + 1]).split('|')]
+    data = [d.strip() for d in rot47(lines[begin_idx + 2]).split('|')]
+    if not header or len(header) != len(data):
+        return None
+    row = dict(zip(header, data))
+
+    alias = row.get('alias') or ''
+    bbs_name = row.get('bbs') or ''
+    if not alias or not bbs_name:
+        return None
+
+    city = row.get('city') or ''
+    country = row.get('country') or ''
+    location = ', '.join(p for p in (city, country) if p)
+
+    date_str = time_str = ''
+    epoch = row.get('epoch') or ''
+    if epoch.isdigit():
+        from datetime import datetime as _dt
+        try:
+            when = _dt.fromtimestamp(int(epoch))
+            date_str = when.strftime('%m/%d/%y')
+            time_str = (when.strftime('%I:%M%p').lower().lstrip('0')
+                       or when.strftime('%I:%M%p').lower())
+        except (ValueError, OSError, OverflowError):
+            pass
+
     return {
-        'alias': fields[0], 'bbs_name': fields[1],
-        'remote_date_str': fields[2], 'remote_time_str': fields[3],
-        'location': fields[4], 'os': fields[5], 'address': fields[6],
+        'alias': alias, 'bbs_name': bbs_name,
+        'remote_date_str': date_str, 'remote_time_str': time_str,
+        'location': location, 'os': row.get('system') or '',
+        'address': row.get('url') or '',
     }
 
 
@@ -268,9 +332,16 @@ def sync_fsxnet_inbound(app, params):
     infopack: "used by software such as InterBBS Oneliners, Last
     Caller Mods etc") -- classify each message by its to/from/subject
     before parsing, and silently skip anything that matches neither
-    shape rather than guessing.
+    shape rather than guessing. A message that matches neither shape's
+    to/from/subject AT ALL (real other traffic sharing the echo, not
+    an IBOL/IBLC variant we just haven't learned yet) gets a permanent
+    FsxnetSyncSkip record so it isn't rescanned every tick forever --
+    see that model's own docstring for why a body-PARSE failure within
+    a recognized shape, or a recognized shape whose feature is simply
+    disabled, deliberately does NOT get the same permanent treatment.
     """
-    from ..models import db, EchoArea, EchomailMessage, FsxnetOneliner, FsxnetLastCaller
+    from ..models import (db, EchoArea, EchomailMessage, FsxnetOneliner,
+                          FsxnetLastCaller, FsxnetSyncSkip)
 
     imported_oneliners = 0
     imported_lastcallers = 0
@@ -290,12 +361,14 @@ def sync_fsxnet_inbound(app, params):
             FsxnetOneliner.remote_msg_id.isnot(None))
         known_lastcaller_ids = db.session.query(FsxnetLastCaller.remote_msg_id).filter(
             FsxnetLastCaller.remote_msg_id.isnot(None))
+        known_skip_ids = db.session.query(FsxnetSyncSkip.remote_msg_id)
         rows = (EchomailMessage.query
                 .filter(EchomailMessage.area_id.in_(area_ids),
                         EchomailMessage.direction == 'inbound')
                 .filter(db.or_(EchomailMessage.msg_id.is_(None),
                               db.and_(~EchomailMessage.msg_id.in_(known_oneliner_ids),
-                                     ~EchomailMessage.msg_id.in_(known_lastcaller_ids))))
+                                     ~EchomailMessage.msg_id.in_(known_lastcaller_ids),
+                                     ~EchomailMessage.msg_id.in_(known_skip_ids))))
                 .all())
 
         ibol_enabled = app.config.get('FSXNET_IBOL_ENABLED')
@@ -326,8 +399,13 @@ def sync_fsxnet_inbound(app, params):
             msg_from = (msg.from_name or '').strip().upper()
             msg_subject = (msg.subject or '').strip().upper()
 
-            if (ibol_enabled and msg_to == IBOL_MSG_TO.upper()
-                    and msg_subject == IBOL_MSG_SUBJECT.upper()):
+            is_ibol_shape = (msg_to == IBOL_MSG_TO.upper()
+                             and msg_subject == IBOL_MSG_SUBJECT.upper())
+            is_iblc_shape = (msg_from == IBLC_MSG_FROM.upper()
+                             and msg_to == IBLC_MSG_TO.upper()
+                             and msg_subject == IBLC_MSG_SUBJECT.upper())
+
+            if ibol_enabled and is_ibol_shape:
                 parsed = _parse_oneliner(msg.body)
                 if parsed is None:
                     skipped_unrecognized += 1
@@ -339,9 +417,7 @@ def sync_fsxnet_inbound(app, params):
                 ))
                 db.session.commit()
                 imported_oneliners += 1
-            elif (iblc_enabled and msg_from == IBLC_MSG_FROM.upper()
-                  and msg_to == IBLC_MSG_TO.upper()
-                  and msg_subject == IBLC_MSG_SUBJECT.upper()):
+            elif iblc_enabled and is_iblc_shape:
                 parsed = _parse_lastcall(msg.body)
                 if parsed is None:
                     skipped_unrecognized += 1
@@ -355,8 +431,25 @@ def sync_fsxnet_inbound(app, params):
                 ))
                 db.session.commit()
                 imported_lastcallers += 1
-            else:
+            elif is_ibol_shape or is_iblc_shape:
+                # A known shape, but its feature is turned off -- do NOT
+                # permanently skip-record: enabling the feature later
+                # must still pick this up on the very next tick.
                 skipped_unrecognized += 1
+                continue
+            else:
+                # Matches neither shape at all -- real other traffic
+                # sharing FSX_DAT, safe to stop rescanning forever.
+                # seen_this_tick guards against the same msg_id
+                # appearing twice in `rows` (e.g. two area rows sharing
+                # one tag, see test_dedup_is_global_across_areas) --
+                # without it, a second insert attempt in the same tick
+                # would hit FsxnetSyncSkip.remote_msg_id's UNIQUE
+                # constraint and abort the whole sync.
+                skipped_unrecognized += 1
+                db.session.add(FsxnetSyncSkip(remote_msg_id=msg.msg_id))
+                db.session.commit()
+                seen_this_tick.add(msg.msg_id)
                 continue
 
             if msg.msg_id:

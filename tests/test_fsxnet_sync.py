@@ -114,6 +114,37 @@ class ParseLastCallTests(unittest.TestCase):
         from anetbbs.echomail.fsxnet_sync import _parse_lastcall, IBLC_BEGIN
         self.assertIsNone(_parse_lastcall(IBLC_BEGIN + '\nonly\ntwo\nfields'))
 
+    def test_parses_real_pipe_delimited_variant(self):
+        """Real second wire variant confirmed live (2026-10-22) from
+        fsxNet peer 21:2/139 (futureland.today): bare 'BEGIN'/'END'
+        markers (no '>>> ' prefix) framing exactly 2 rot47 lines -- a
+        self-describing pipe-delimited header row, then one matching
+        data row -- rather than iblc.js's fixed 7-line scheme."""
+        from datetime import datetime
+        from anetbbs.echomail.fsxnet_sync import rot47, _parse_lastcall
+        header = 'epoch|alias|city|country|client|door|bbs|url|system'
+        data = '1788805940|deepseaastronomy||Turtle Island|Telnet linux|customlogon.js|futureland.today|futureland.today:23|Linux'
+        body = 'BEGIN\n' + rot47(header) + '\n' + rot47(data) + '\nEND'
+        result = _parse_lastcall(body)
+        self.assertIsNotNone(result)
+        self.assertEqual(result['alias'], 'deepseaastronomy')
+        self.assertEqual(result['bbs_name'], 'futureland.today')
+        self.assertEqual(result['location'], 'Turtle Island')
+        self.assertEqual(result['os'], 'Linux')
+        self.assertEqual(result['address'], 'futureland.today:23')
+        self.assertEqual(result['remote_date_str'],
+                         datetime.fromtimestamp(1788805940).strftime('%m/%d/%y'))
+
+    def test_pipe_variant_mismatched_column_count_is_rejected(self):
+        from anetbbs.echomail.fsxnet_sync import rot47, _parse_lastcall
+        body = 'BEGIN\n' + rot47('alias|bbs') + '\n' + rot47('onlyonecolumn') + '\nEND'
+        self.assertIsNone(_parse_lastcall(body))
+
+    def test_pipe_variant_missing_alias_or_bbs_is_rejected(self):
+        from anetbbs.echomail.fsxnet_sync import rot47, _parse_lastcall
+        body = 'BEGIN\n' + rot47('city|country') + '\n' + rot47('Somewhere|Nowhere') + '\nEND'
+        self.assertIsNone(_parse_lastcall(body))
+
 
 class FsxnetOutboundTests(unittest.TestCase):
     @classmethod
@@ -535,6 +566,100 @@ class FsxnetInboundTests(unittest.TestCase):
             self.assertTrue(ok, out)
             self.assertEqual(FsxnetOneliner.query.count(), 0,
                              'IBOL is disabled -- an oneliner-shaped message must not import')
+
+    def test_inbound_lastcall_pipe_variant_materializes(self):
+        """Real second wire variant (see ParseLastCallTests) must import
+        through the full sync path too, not just the bare parser."""
+        from anetbbs.echomail.fsxnet_sync import (
+            sync_fsxnet_inbound, rot47, IBLC_MSG_FROM, IBLC_MSG_TO, IBLC_MSG_SUBJECT)
+        from anetbbs.models import db, EchomailMessage, FsxnetLastCaller
+        with self.app.app_context():
+            self.app.config['FSXNET_IBLC_ENABLED'] = True
+            net = self._network()
+            self.app.config['FSXNET_NETWORK_ID'] = net.id
+            area = self._area(net)
+            header = 'epoch|alias|city|country|bbs|url|system'
+            data = '1788805940|deepseaastronomy||Turtle Island|futureland.today|futureland.today:23|Linux'
+            body = 'BEGIN\n' + rot47(header) + '\n' + rot47(data) + '\nEND'
+            db.session.add(EchomailMessage(
+                area_id=area.id, network_id=net.id, msg_id='PIPE-1',
+                from_name=IBLC_MSG_FROM, to_name=IBLC_MSG_TO, subject=IBLC_MSG_SUBJECT,
+                body=body, direction='inbound',
+            ))
+            db.session.commit()
+
+            ok, out = sync_fsxnet_inbound(self.app, {})
+            self.assertTrue(ok, out)
+            rows = FsxnetLastCaller.query.all()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].alias, 'deepseaastronomy')
+            self.assertEqual(rows[0].bbs_name, 'futureland.today')
+            self.assertEqual(rows[0].remote_msg_id, 'PIPE-1')
+
+    def test_unrecognized_shape_is_not_rescanned_on_next_tick(self):
+        """Real live bug (2026-10-22): a message matching neither IBOL
+        nor IBLC's shape at all had no persistent record anywhere, so
+        every 15-minute tick re-scanned and re-skipped the SAME backlog
+        forever -- confirmed live as an unchanging "214 unrecognized"
+        count. A second sync call must process zero rows, not report
+        the same message as freshly skipped again."""
+        from anetbbs.echomail.fsxnet_sync import sync_fsxnet_inbound
+        from anetbbs.models import db, EchomailMessage, FsxnetSyncSkip
+        with self.app.app_context():
+            self.app.config['FSXNET_IBOL_ENABLED'] = True
+            self.app.config['FSXNET_IBLC_ENABLED'] = True
+            net = self._network()
+            self.app.config['FSXNET_NETWORK_ID'] = net.id
+            area = self._area(net)
+            db.session.add(EchomailMessage(
+                area_id=area.id, network_id=net.id, msg_id='FOREVER-1',
+                from_name='SomeOtherBot', to_name='Nodelist', subject='nodelist-data',
+                body='not ours at all', direction='inbound',
+            ))
+            db.session.commit()
+
+            ok1, out1 = sync_fsxnet_inbound(self.app, {})
+            self.assertTrue(ok1, out1)
+            self.assertIn('skipped 0 (no msg_id), 1 (unrecognized)', out1)
+            self.assertEqual(FsxnetSyncSkip.query.count(), 1)
+
+            ok2, out2 = sync_fsxnet_inbound(self.app, {})
+            self.assertTrue(ok2, out2)
+            self.assertIn('skipped 0 (no msg_id), 0 (unrecognized)', out2,
+                         'the same message must not be re-scanned on a later tick')
+            self.assertEqual(FsxnetSyncSkip.query.count(), 1)
+
+    def test_disabled_feature_shape_is_not_permanently_skipped(self):
+        """A message matching a KNOWN shape (IBOL's to/subject) whose
+        feature is simply turned off must NOT get the same permanent
+        FsxnetSyncSkip treatment as truly foreign traffic -- enabling
+        the feature later must still pick it up."""
+        from anetbbs.echomail.fsxnet_sync import (
+            sync_fsxnet_inbound, IBOL_MSG_TO, IBOL_MSG_SUBJECT)
+        from anetbbs.models import db, EchomailMessage, FsxnetOneliner, FsxnetSyncSkip
+        with self.app.app_context():
+            self.app.config['FSXNET_IBOL_ENABLED'] = False
+            net = self._network()
+            self.app.config['FSXNET_NETWORK_ID'] = net.id
+            area = self._area(net)
+            db.session.add(EchomailMessage(
+                area_id=area.id, network_id=net.id, msg_id='LATER-1',
+                from_name='X', to_name=IBOL_MSG_TO, subject=IBOL_MSG_SUBJECT,
+                body='Author: X\nSource: Y\nOneliner: pick me up later',
+                direction='inbound',
+            ))
+            db.session.commit()
+
+            sync_fsxnet_inbound(self.app, {})
+            self.assertEqual(FsxnetOneliner.query.count(), 0)
+            self.assertEqual(FsxnetSyncSkip.query.count(), 0,
+                             'a disabled-feature message must not be permanently skip-recorded')
+
+            self.app.config['FSXNET_IBOL_ENABLED'] = True
+            ok, out = sync_fsxnet_inbound(self.app, {})
+            self.assertTrue(ok, out)
+            self.assertEqual(FsxnetOneliner.query.count(), 1,
+                             're-enabling IBOL must still import the earlier-seen message')
 
 
 if __name__ == '__main__':
