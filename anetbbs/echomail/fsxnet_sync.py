@@ -298,14 +298,22 @@ def _parse_lastcall_pipe_variant(lines, begin_idx):
     location = ', '.join(p for p in (city, country) if p)
 
     date_str = time_str = ''
+    epoch_utc = None
     epoch = row.get('epoch') or ''
     if epoch.isdigit():
         from datetime import datetime as _dt
         try:
-            when = _dt.fromtimestamp(int(epoch))
-            date_str = when.strftime('%m/%d/%y')
-            time_str = (when.strftime('%I:%M%p').lower().lstrip('0')
-                       or when.strftime('%I:%M%p').lower())
+            when_local = _dt.fromtimestamp(int(epoch))
+            date_str = when_local.strftime('%m/%d/%y')
+            time_str = (when_local.strftime('%I:%M%p').lower().lstrip('0')
+                       or when_local.strftime('%I:%M%p').lower())
+            # UTC (not local-time) specifically, because this one -- unlike
+            # the classic variant's free-text date/time fields -- is a real
+            # unambiguous UNIX timestamp worth trusting for created_at
+            # itself (see sync_fsxnet_inbound's use of this). utcfromtimestamp
+            # keeps it directly comparable/sortable against every other
+            # row's naive-UTC datetime.utcnow() default.
+            epoch_utc = _dt.utcfromtimestamp(int(epoch))
         except (ValueError, OSError, OverflowError):
             pass
 
@@ -313,7 +321,7 @@ def _parse_lastcall_pipe_variant(lines, begin_idx):
         'alias': alias, 'bbs_name': bbs_name,
         'remote_date_str': date_str, 'remote_time_str': time_str,
         'location': location, 'os': row.get('system') or '',
-        'address': row.get('url') or '',
+        'address': row.get('url') or '', 'remote_epoch_utc': epoch_utc,
     }
 
 
@@ -422,13 +430,25 @@ def sync_fsxnet_inbound(app, params):
                 if parsed is None:
                     skipped_unrecognized += 1
                     continue
-                db.session.add(FsxnetLastCaller(
+                lastcaller_kwargs = dict(
                     alias=parsed['alias'][:80], bbs_name=parsed['bbs_name'][:100],
                     remote_date_str=parsed['remote_date_str'][:20],
                     remote_time_str=parsed['remote_time_str'][:20],
                     location=parsed['location'][:100], os=parsed['os'][:40],
                     address=parsed['address'][:160], remote_msg_id=msg.msg_id,
-                ))
+                )
+                # Pipe-variant posts carry a real UNIX epoch (see
+                # _parse_lastcall_pipe_variant) -- trustworthy enough to
+                # use as this row's own created_at, unlike the classic
+                # variant's free-text date/time fields (left at the
+                # column's own datetime.utcnow() default, same as
+                # always). Without this, a backlog processed in one
+                # sync tick (exactly what just happened live fixing the
+                # parser gap itself) stamps every row with the SAME
+                # "now" instead of each message's real original time.
+                if parsed.get('remote_epoch_utc') is not None:
+                    lastcaller_kwargs['created_at'] = parsed['remote_epoch_utc']
+                db.session.add(FsxnetLastCaller(**lastcaller_kwargs))
                 db.session.commit()
                 imported_lastcallers += 1
             elif is_ibol_shape or is_iblc_shape:

@@ -134,6 +134,16 @@ class ParseLastCallTests(unittest.TestCase):
         self.assertEqual(result['address'], 'futureland.today:23')
         self.assertEqual(result['remote_date_str'],
                          datetime.fromtimestamp(1788805940).strftime('%m/%d/%y'))
+        self.assertEqual(result['remote_epoch_utc'], datetime.utcfromtimestamp(1788805940))
+
+    def test_missing_epoch_leaves_remote_epoch_utc_none(self):
+        from anetbbs.echomail.fsxnet_sync import rot47, _parse_lastcall
+        header = 'alias|bbs'
+        data = 'nodate|Some BBS'
+        body = 'BEGIN\n' + rot47(header) + '\n' + rot47(data) + '\nEND'
+        result = _parse_lastcall(body)
+        self.assertIsNotNone(result)
+        self.assertIsNone(result['remote_epoch_utc'])
 
     def test_pipe_variant_mismatched_column_count_is_rejected(self):
         from anetbbs.echomail.fsxnet_sync import rot47, _parse_lastcall
@@ -595,6 +605,77 @@ class FsxnetInboundTests(unittest.TestCase):
             self.assertEqual(rows[0].alias, 'deepseaastronomy')
             self.assertEqual(rows[0].bbs_name, 'futureland.today')
             self.assertEqual(rows[0].remote_msg_id, 'PIPE-1')
+
+    def test_inbound_lastcall_pipe_variant_backdates_created_at_from_epoch(self):
+        """Real live surprise (2026-10-22): importing a backlog of
+        pipe-variant posts in one sync tick stamped every row with the
+        SAME 'now' (the display always renders created_at, never the
+        opaque remote_date_str/remote_time_str fields -- see
+        fsxnet_iblc.py), making a real historical backlog look like a
+        simultaneous mass-login burst. The pipe variant's epoch field
+        is a real, trustworthy UNIX timestamp (unlike the classic
+        variant's free-text fields), so created_at must come from it
+        instead of defaulting to utcnow()."""
+        from datetime import datetime, timedelta
+        from anetbbs.echomail.fsxnet_sync import (
+            sync_fsxnet_inbound, rot47, IBLC_MSG_FROM, IBLC_MSG_TO, IBLC_MSG_SUBJECT)
+        from anetbbs.models import db, EchomailMessage, FsxnetLastCaller
+        with self.app.app_context():
+            self.app.config['FSXNET_IBLC_ENABLED'] = True
+            net = self._network()
+            self.app.config['FSXNET_NETWORK_ID'] = net.id
+            area = self._area(net)
+            old_epoch = 1757246000  # a real past timestamp, well before "now"
+            header = 'epoch|alias|bbs'
+            data = f'{old_epoch}|oldtimer|Old BBS'
+            body = 'BEGIN\n' + rot47(header) + '\n' + rot47(data) + '\nEND'
+            db.session.add(EchomailMessage(
+                area_id=area.id, network_id=net.id, msg_id='BACKDATE-1',
+                from_name=IBLC_MSG_FROM, to_name=IBLC_MSG_TO, subject=IBLC_MSG_SUBJECT,
+                body=body, direction='inbound',
+            ))
+            db.session.commit()
+
+            ok, out = sync_fsxnet_inbound(self.app, {})
+            self.assertTrue(ok, out)
+            row = FsxnetLastCaller.query.filter_by(remote_msg_id='BACKDATE-1').first()
+            self.assertIsNotNone(row)
+            self.assertEqual(row.created_at, datetime.utcfromtimestamp(old_epoch))
+            self.assertLess(row.created_at, datetime.utcnow() - timedelta(days=1),
+                            'must reflect the real historical login time, not import time')
+
+    def test_classic_variant_created_at_still_defaults_to_import_time(self):
+        """The classic variant's date/time fields are untrustworthy free
+        text (see the model's own docstring) -- created_at must stay at
+        the column's own utcnow() default for that variant, unaffected
+        by the pipe-variant epoch backdating above."""
+        from datetime import datetime, timedelta
+        from anetbbs.echomail.fsxnet_sync import (
+            sync_fsxnet_inbound, rot47, IBLC_BEGIN, IBLC_END,
+            IBLC_MSG_FROM, IBLC_MSG_TO, IBLC_MSG_SUBJECT)
+        from anetbbs.models import db, EchomailMessage, FsxnetLastCaller
+        with self.app.app_context():
+            self.app.config['FSXNET_IBLC_ENABLED'] = True
+            net = self._network()
+            self.app.config['FSXNET_NETWORK_ID'] = net.id
+            area = self._area(net)
+            fields = ['Codefenix', 'ConstructiveChaos BBS', '01/01/20',
+                     '08:00a', 'Somewhere, ON', 'Linux', 'conchaos.synchro.net']
+            body = IBLC_BEGIN + '\n' + '\n'.join(rot47(f) for f in fields) + '\n' + IBLC_END
+            db.session.add(EchomailMessage(
+                area_id=area.id, network_id=net.id, msg_id='CLASSIC-1',
+                from_name=IBLC_MSG_FROM, to_name=IBLC_MSG_TO, subject=IBLC_MSG_SUBJECT,
+                body=body, direction='inbound',
+            ))
+            db.session.commit()
+
+            before = datetime.utcnow()
+            ok, out = sync_fsxnet_inbound(self.app, {})
+            self.assertTrue(ok, out)
+            row = FsxnetLastCaller.query.filter_by(remote_msg_id='CLASSIC-1').first()
+            self.assertIsNotNone(row)
+            self.assertGreaterEqual(row.created_at, before - timedelta(seconds=5),
+                                    'classic-variant posts claiming 01/01/20 must NOT backdate')
 
     def test_unrecognized_shape_is_not_rescanned_on_next_tick(self):
         """Real live bug (2026-10-22): a message matching neither IBOL

@@ -1,11 +1,22 @@
 # ANetBBS Changelog
 
-Current release: **`v1.1.51`** (October 2026). This file covers `v1.0.0`
+Current release: **`v1.1.52`** (October 2026). This file covers `v1.0.0`
 onward, which follows standard semantic versioning — patch releases are
 `v1.0.1`, `v1.0.2`, and so on. The full internal beta build-number
 history (`v1.0a1.1` through `v1.0b2.239`) that got the project to this
 release is preserved in
 [`CHANGELOG-beta.md`](CHANGELOG-beta.md).
+
+## v1.1.52 — fsxNet Last Caller timestamp fix (October 2026)
+
+- The new pipe-delimited Last Caller wire format introduced in v1.1.51
+  carries a real timestamp from the originating BBS. Inbound posts in
+  this format now use that timestamp for the row's own arrival time
+  instead of the moment it was locally imported, so a backlog of
+  historical posts imported together no longer all display as having
+  arrived at the same instant. The original fixed-field format is
+  unaffected, since its own date/time fields are untrusted free text
+  by design.
 
 ## v1.1.51 — fsxNet IBLC wire-format and sync fixes (October 2026)
 
