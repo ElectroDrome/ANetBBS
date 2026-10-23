@@ -285,14 +285,16 @@ def index():
         'new_users': _safe(lambda: User.query
                            .filter(User.created_at >= today).count(), 0),
     }
-    # Active poll teaser (most recently created open poll)
+    # Active poll teaser (random open poll)
     active_poll = None
     try:
+        from sqlalchemy.sql import func
         from ..models import Poll
+        
         active_poll = (Poll.query.filter_by(is_active=True)
                        .filter(db.or_(Poll.closes_at.is_(None),
                                       Poll.closes_at > datetime.utcnow()))
-                       .order_by(Poll.created_at.desc()).first())
+                       .order_by(func.random()).first())
     except Exception:
         db.session.rollback()
 
